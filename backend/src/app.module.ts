@@ -3,20 +3,19 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { GameModule } from './game/game.module';
+import { GamesModule } from './games/games.module';
+import { BetsModule } from './bets/bets.module';
 
 @Module({
   imports: [
-    // Load .env and make env vars available across the app
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-
-    // Connect to MongoDB using MONGO_URI from .env
-    MongooseModule.forRoot(process.env.MONGO_URI as string),
-
-    GameModule,
-    // GameModule will be added here after we generate it
+    MongooseModule.forRoot(
+      process.env.MONGODB_URI || 'mongodb://localhost:27017/cavs-betting-dev',
+    ),
+    GamesModule,
+    BetsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
