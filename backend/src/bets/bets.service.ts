@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Bet, BetDocument } from './schemas/bet.schema';
 import { Game, GameDocument } from '../games/schemas/game.schema';
 import { CreateBetDto } from './dto/create-bet.dto';
@@ -16,8 +16,23 @@ export class BetsService {
     @InjectModel(Game.name) private readonly gameModel: Model<GameDocument>,
   ) {}
 
-  async createBet(userId: string, dto: any): Promise<Bet> {
-    const game = await this.gameModel.findById(dto.gameId);
+  async createBet(dto: CreateBetDto): Promise<Bet> {
+    const sideValid = dto.side === 'home' || dto.side === 'away';
+    const stake = Number(dto.stake);
+    if (!dto.userId) {
+      throw new BadRequestException('userId is required');
+    }
+    if (!dto.gameId) {
+      throw new BadRequestException('gameId is required');
+    }
+    if (!sideValid) {
+      throw new BadRequestException('side must be "home" or "away"');
+    }
+    if (!Number.isFinite(stake) || stake <= 0) {
+      throw new BadRequestException('stake must be a positive number');
+    }
+
+    const game = await this.gameModel.findOne({ gameId: dto.gameId });
 
     if (!game) {
       throw new NotFoundException('Game not found');
@@ -28,9 +43,9 @@ export class BetsService {
     }
 
     const bet = new this.betModel({
-      userId,
-      gameId: new Types.ObjectId(dto.gameId),
-      amount: dto.amount,
+      userId: dto.userId,
+      gameId: game._id,
+      amount: stake,
       side: dto.side,
       line: game.spread ?? 0,
       odds: -110, // hard-coded for now

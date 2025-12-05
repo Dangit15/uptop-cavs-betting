@@ -1,16 +1,15 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { BetsService } from './bets.service';
+import { CreateBetDto } from './dto/create-bet.dto';
 
 @Controller('bets')
 export class BetsController {
   constructor(private readonly betsService: BetsService) {}
 
   @Post()
-  async createBet(@Body() body: any) {
+  async createBet(@Body() body: CreateBetDto) {
     console.log('CREATE BET BODY:', body);
-
-    const userId = 'demo-user';
-    return this.betsService.createBet(userId, body);
+    return this.betsService.createBet(body);
   }
 
   @Get()

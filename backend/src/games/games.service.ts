@@ -118,11 +118,12 @@ export class GamesService {
   }
 
   // PUBLIC: called by GET /games/next
-  async getNextGame(): Promise<GameDocument | null> {
+  async getNextGame(): Promise<Partial<Game> | null> {
     const now = new Date();
     return this.gameModel
       .findOne({ status: 'upcoming', startTime: { $gt: now } })
       .sort({ startTime: 1 })
+      .lean()
       .exec();
   }
 

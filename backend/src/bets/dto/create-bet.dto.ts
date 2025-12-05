@@ -1,5 +1,6 @@
 export class CreateBetDto {
   gameId: string;
+  userId: string;
   side: 'home' | 'away';
-  amount: number;
+  stake: number;
 }
