@@ -21,7 +21,7 @@ type FetchState<T> = {
 
 export default function HomePage() {
   const { data: session, status } = useSession();
-  const accessToken = (session as any)?.accessToken;
+  const accessToken = session?.accessToken as string | undefined;
   console.log("BETTING PAGE session", session, "accessToken", accessToken);
 
   const [gameState, setGameState] = useState<FetchState<NextGame | null>>({
@@ -74,30 +74,20 @@ export default function HomePage() {
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!gameState.data) return;
-    if (!session || !session.user?.id) {
+    if (!accessToken) {
       setBetMessage("You must be logged in to place a bet.");
       return;
     }
-    if (!accessToken) {
-      setBetMessage("Missing access token. Please log in again.");
-      return;
-    }
-
-    const userId = session.user.id;
 
     setPlacing(true);
     setBetMessage(null);
 
     try {
-      await createBet(
-        {
-          gameId: gameState.data.gameId,
-          userId,
-          side,
-          stake,
-        },
-        accessToken
-      );
+      await createBet(accessToken, {
+        gameId: gameState.data.gameId,
+        side,
+        stake,
+      });
       setBetMessage("Bet placed successfully.");
       // Re-fetch bets for this user so the UI updates
       const updatedBets = await fetchMyBets(accessToken);
@@ -262,6 +252,11 @@ export default function HomePage() {
                       {betMessage && (
                         <p className="text-xs mt-3 text-slate-300">
                           {betMessage}
+                        </p>
+                      )}
+                      {!accessToken && (
+                        <p className="mt-2 text-xs text-slate-400">
+                          You must be logged in to place a bet.
                         </p>
                       )}
                     </>

@@ -30,6 +30,7 @@ export class BetsController {
     return userId;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   async create(@Req() req: any, @Body() dto: CreateBetDto) {
     const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;

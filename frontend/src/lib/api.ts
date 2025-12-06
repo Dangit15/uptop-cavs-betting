@@ -47,23 +47,21 @@ export type CreateBetPayload = {
   stake: number;
 };
 
-export async function createBet(payload: any, accessToken: string) {
-  const url = `${API_BASE_URL}/bets`;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  };
-
-  const res = await fetch(url, {
+export async function createBet(
+  accessToken: string,
+  bet: { gameId: string; side: "cavs" | "opponent"; amount: number },
+) {
+  const res = await fetch(`${API_BASE_URL}/bets`, {
     method: "POST",
-    headers,
-    body: JSON.stringify(payload),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(bet),
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to create bet: ${res.status} ${text}`);
+    throw new Error(`Failed to create bet: ${res.status}`);
   }
 
   return res.json();
@@ -89,11 +87,8 @@ export type Bet = {
 };
 
 export async function fetchMyBets(accessToken: string) {
-  console.log('fetchMyBets called with accessToken', accessToken);
-
   const res = await fetch(`${API_BASE_URL}/bets/me`, {
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
   });
