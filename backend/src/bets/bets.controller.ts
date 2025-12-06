@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Post, Headers } from '@nestjs/common';
+import { Body, Controller, Get, Post, Headers, UseGuards, Req } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { BetsService } from './bets.service';
 import { CreateBetDto } from './dto/create-bet.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('bets')
 export class BetsController {
   constructor(
@@ -29,19 +31,15 @@ export class BetsController {
   }
 
   @Post()
-  async createBet(
-    @Body() body: CreateBetDto,
-    @Headers('authorization') authHeader?: string,
-  ) {
-    const userId = this.getUserIdFromAuthHeader(authHeader);
-    const payload = { ...body, userId };
-    return this.betsService.createBet(payload);
+  async create(@Req() req: any, @Body() dto: CreateBetDto) {
+    const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
+    return this.betsService.create(userId, dto);
   }
 
-  @Get()
-  async getBets(@Headers('authorization') authHeader?: string) {
-    const userId = this.getUserIdFromAuthHeader(authHeader);
-    return this.betsService.getBetsForUser(userId);
+  @Get('me')
+  async findMyBets(@Req() req: any) {
+    console.log('DEBUG /bets/me req.user =', req.user);
+    return { user: req.user };
   }
 
   @Post('settle')

@@ -9,12 +9,10 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials.password) {
-          return null;
-        }
+      authorize: async (credentials) => {
+        if (!credentials?.email || !credentials?.password) return null;
 
-        const res = await fetch("http://localhost:3001/auth/login", {
+        const res = await fetch(`http://localhost:3001/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -23,19 +21,17 @@ export const authOptions: NextAuthOptions = {
           }),
         });
 
-        if (!res.ok) {
-          return null;
-        }
+        if (!res.ok) return null;
 
         const data = await res.json();
+        const accessToken = data.accessToken ?? data.access_token;
 
         return {
           id: data.user.id,
-          name: data.user.name,
           email: data.user.email,
-          role: data.user.role,
-          accessToken: data.accessToken,
-        } as any;
+          name: data.user.name,
+          accessToken,
+        };
       },
     }),
   ],
@@ -44,18 +40,15 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.role = (user as any).role;
+      if (user && (user as any).accessToken) {
         token.accessToken = (user as any).accessToken;
       }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.sub as string;
-        (session.user as any).role = token.role as string | undefined;
+      if (token && (token as any).accessToken) {
+        (session as any).accessToken = (token as any).accessToken;
       }
-      (session as any).accessToken = (token as any).accessToken;
       return session;
     },
   },

@@ -12,12 +12,18 @@ export type NextGame = {
   awayScore?: number;
 };
 
-export async function fetchNextGame(): Promise<NextGame | null> {
+export async function fetchNextGame(
+  accessToken?: string
+): Promise<NextGame | null> {
   // Hard-coded URL, no variables, no template string
   const url = "http://localhost:3001/games/next";
 
   const res = await fetch(url, {
     cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
   });
 
   if (res.status === 404) {
@@ -41,18 +47,13 @@ export type CreateBetPayload = {
   stake: number;
 };
 
-export async function createBet(
-  payload: CreateBetPayload,
-  accessToken?: string
-) {
+export async function createBet(payload: any, accessToken: string) {
   const url = `${API_BASE_URL}/bets`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   };
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
 
   const res = await fetch(url, {
     method: "POST",
@@ -87,18 +88,18 @@ export type Bet = {
   createdAt: string;
 };
 
-export async function fetchMyBets(accessToken?: string): Promise<Bet[]> {
-  const url = "http://localhost:3001/bets";
+export async function fetchMyBets(accessToken: string) {
+  console.log('fetchMyBets called with accessToken', accessToken);
 
-  const headers: Record<string, string> = {};
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
+  const res = await fetch(`${API_BASE_URL}/bets/me`, {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 
-  const res = await fetch(url, { cache: "no-store", headers });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to fetch bets: ${res.status} ${text}`);
+    throw new Error(`Failed to fetch bets: ${res.status}`);
   }
 
   return res.json();

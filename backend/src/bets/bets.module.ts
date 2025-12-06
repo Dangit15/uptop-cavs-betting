@@ -5,9 +5,11 @@ import { BetsService } from './bets.service';
 import { BetsController } from './bets.controller';
 import { Bet, BetSchema } from './schemas/bet.schema';
 import { Game, GameSchema } from '../games/schemas/game.schema';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
+    AuthModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'dev-secret',
     }),

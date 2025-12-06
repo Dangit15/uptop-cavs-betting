@@ -16,10 +16,10 @@ export class BetsService {
     @InjectModel(Game.name) private readonly gameModel: Model<GameDocument>,
   ) {}
 
-  async createBet(dto: CreateBetDto): Promise<Bet> {
+  async create(userId: string, dto: CreateBetDto): Promise<Bet> {
     const sideValid = dto.side === 'home' || dto.side === 'away';
     const stake = Number(dto.stake);
-    if (!dto.userId) {
+    if (!userId) {
       throw new BadRequestException('userId is required');
     }
     if (!dto.gameId) {
@@ -42,8 +42,8 @@ export class BetsService {
       throw new BadRequestException('Cannot place a bet on a non-upcoming game');
     }
 
-    const bet = new this.betModel({
-      userId: dto.userId,
+    return this.betModel.create({
+      userId,
       gameId: game._id,
       amount: stake,
       side: dto.side,
@@ -51,8 +51,6 @@ export class BetsService {
       odds: -110, // hard-coded for now
       status: 'pending',
     });
-
-    return bet.save();
   }
 
   async getBetsForUser(userId: string): Promise<Bet[]> {

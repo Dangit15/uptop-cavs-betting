@@ -21,7 +21,8 @@ type FetchState<T> = {
 
 export default function HomePage() {
   const { data: session, status } = useSession();
-  const accessToken = (session as any)?.accessToken as string | undefined;
+  const accessToken = (session as any)?.accessToken;
+  console.log("BETTING PAGE session", session, "accessToken", accessToken);
 
   const [gameState, setGameState] = useState<FetchState<NextGame | null>>({
     loading: true,
@@ -41,9 +42,11 @@ export default function HomePage() {
   const [betMessage, setBetMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!accessToken) return;
+
     const load = async () => {
       try {
-        const game = await fetchNextGame();
+        const game = await fetchNextGame(accessToken);
         setGameState({ loading: false, data: game, error: null });
       } catch (err: any) {
         setGameState({
@@ -75,6 +78,10 @@ export default function HomePage() {
       setBetMessage("You must be logged in to place a bet.");
       return;
     }
+    if (!accessToken) {
+      setBetMessage("Missing access token. Please log in again.");
+      return;
+    }
 
     const userId = session.user.id;
 
@@ -89,7 +96,7 @@ export default function HomePage() {
           side,
           stake,
         },
-        accessToken,
+        accessToken
       );
       setBetMessage("Bet placed successfully.");
       // Re-fetch bets for this user so the UI updates
