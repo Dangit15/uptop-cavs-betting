@@ -43,3 +43,9 @@ export class Game {
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);
+
+// Fields: gameId is the odds provider's event id; homeTeam/awayTeam are the team names;
+// startTime is when the game begins; spread is the Cavaliers point spread; bookmakerKey
+// is the sportsbook source key; status tracks lifecycle (upcoming/live/completed);
+// homeScore/awayScore hold in-game tallies; finalHomeScore/finalAwayScore capture the
+// finished totals.

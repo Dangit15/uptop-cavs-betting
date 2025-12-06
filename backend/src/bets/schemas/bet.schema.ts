@@ -40,3 +40,6 @@ export class Bet {
 }
 
 export const BetSchema = SchemaFactory.createForClass(Bet);
+
+// Schema: Bet documents link a userId to a gameId (ObjectId ref), storing amount, side,
+// the line/odds snapshot when placed, a pending/won/lost/refunded status, and optional settledAt timestamp.

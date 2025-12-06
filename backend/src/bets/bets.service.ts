@@ -104,3 +104,6 @@ export class BetsService {
     return { game, settled };
   }
 }
+
+// Service: validates bet payloads, ensures the game exists and is upcoming, creates bets (linking to game ObjectId, storing line/odds/status),
+// fetches bets for a user with game populated, and settles all pending bets for a game by updating game scores/status and marking bet outcomes.

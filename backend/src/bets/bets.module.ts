@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BetsService } from './bets.service';
 import { BetsController } from './bets.controller';
@@ -7,6 +8,9 @@ import { Game, GameSchema } from '../games/schemas/game.schema';
 
 @Module({
   imports: [
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'dev-secret',
+    }),
     MongooseModule.forFeature([
       { name: Bet.name, schema: BetSchema },
       { name: Game.name, schema: GameSchema },
@@ -17,3 +21,5 @@ import { Game, GameSchema } from '../games/schemas/game.schema';
   exports: [BetsService],
 })
 export class BetsModule {}
+
+// Module: wires up Bet and Game Mongoose models and registers the BetsController and BetsService.

@@ -1,4 +1,7 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -9,64 +12,95 @@ import { Game, GameDocument } from './schemas/game.schema';
 export class GamesService {
   private readonly oddsBaseUrl =
     'https://api.the-odds-api.com/v4/sports/basketball_nba';
+  private readonly cavsTeamName = 'cavaliers';
 
   constructor(
     private readonly httpService: HttpService,
     @InjectModel(Game.name) private readonly gameModel: Model<GameDocument>,
   ) {}
 
-  // Call the Odds API /odds endpoint and pick the NEXT Cavs game
-  private async fetchNextCavsGameFromOddsApi(): Promise<any> {
-    const url = `${this.oddsBaseUrl}/odds`;
-    const params = {
-      regions: 'us',
-      markets: 'spreads',
-      apiKey: process.env.ODDS_API_KEY,
-    };
-
-    const { data } = await firstValueFrom(
-      this.httpService.get(url, { params }),
-    );
-
-    if (!Array.isArray(data)) {
-      throw new InternalServerErrorException('Unexpected odds API response');
-    }
-
-    const now = new Date().getTime();
-
-    // 1) Filter to only Cavs games
-    const cavsGames = data
-      .filter(
-        (event: any) =>
-          event.home_team === 'Cleveland Cavaliers' ||
-          event.away_team === 'Cleveland Cavaliers',
-      )
-      .sort(
-        (a: any, b: any) =>
-          new Date(a.commence_time).getTime() -
-          new Date(b.commence_time).getTime(),
-      );
-
-    if (cavsGames.length === 0) {
+  private get apiKey(): string {
+    const key = process.env.ODDS_API_KEY;
+    if (!key) {
       throw new InternalServerErrorException(
-        'No Cavaliers games returned by Odds API',
+        'ODDS_API_KEY is not configured in the environment',
       );
     }
-
-    // 2) From those, pick the earliest FUTURE one (strictly upcoming)
-    const upcoming = cavsGames.filter(
-      (event: any) => new Date(event.commence_time).getTime() > now,
-    );
-
-    if (upcoming.length === 0) {
-      // This is the “they’re playing now but no future game scheduled yet” case
-      throw new InternalServerErrorException('No upcoming Cavaliers game found');
-    }
-
-    return upcoming[0];
+    return key;
   }
 
-  // Convert Odds API JSON into our Game shape
+  // Core call to the Odds API NBA /odds endpoint
+  private async fetchAllNbaOddsFromApi(): Promise<any[]> {
+    const url = `${this.oddsBaseUrl}/odds`;
+
+    try {
+      const response$ = this.httpService.get(url, {
+        params: {
+          apiKey: this.apiKey,
+          regions: 'us', // US books
+          markets: 'spreads', // we care about spreads only
+          oddsFormat: 'american',
+          dateFormat: 'iso',
+        },
+      });
+
+      const { data } = await firstValueFrom(response$);
+
+      if (!Array.isArray(data)) {
+        throw new InternalServerErrorException(
+          'Unexpected Odds API response structure',
+        );
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error(
+        'Error calling Odds API /odds:',
+        error?.response?.data || error.message || error,
+      );
+
+      throw new InternalServerErrorException(
+        'Failed to fetch odds from provider',
+      );
+    }
+  }
+
+  // Check if a given event involves the Cavs
+  private isCavsGame(event: any): boolean {
+    const home = (event.home_team || '').toLowerCase();
+    const away = (event.away_team || '').toLowerCase();
+    return (
+      home.includes(this.cavsTeamName) || away.includes(this.cavsTeamName)
+    );
+  }
+
+  // Treat only strictly future games as "upcoming" to skip in-progress and past
+  private isUpcoming(event: any): boolean {
+    const commence = new Date(event.commence_time);
+    const now = new Date();
+    return commence.getTime() > now.getTime();
+  }
+
+  // Among all odds events, pick the next upcoming Cavs game
+  private pickNextUpcomingCavsGame(events: any[]): any | null {
+    const candidates = events.filter(
+      (e) => this.isCavsGame(e) && this.isUpcoming(e),
+    );
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    candidates.sort(
+      (a, b) =>
+        new Date(a.commence_time).getTime() -
+        new Date(b.commence_time).getTime(),
+    );
+
+    return candidates[0];
+  }
+
+  // Convert Odds API JSON into our Game schema shape
   private mapOddsApiToGame(oddsGame: any): Partial<Game> {
     const bookmakers = oddsGame.bookmakers ?? [];
     if (bookmakers.length === 0) {
@@ -84,8 +118,9 @@ export class GamesService {
       throw new InternalServerErrorException('No spreads market in odds data');
     }
 
-    const cavsOutcome = (spreadsMarket.outcomes ?? []).find(
-      (o: any) => o.name === 'Cleveland Cavaliers',
+    const outcomes = spreadsMarket.outcomes ?? [];
+    const cavsOutcome = outcomes.find(
+      (o: any) => (o.name || '').toLowerCase().includes('cavaliers'),
     );
     if (!cavsOutcome) {
       throw new InternalServerErrorException(
@@ -101,13 +136,25 @@ export class GamesService {
       spread: cavsOutcome.point,
       bookmakerKey: fanduel.key,
       status: 'upcoming',
+      // homeScore, awayScore, finalHomeScore, finalAwayScore are left undefined for now
     };
   }
 
   // PUBLIC: called by POST /games/next
+  // 1. Fetch odds from provider
+  // 2. Identify next upcoming Cavs game (skipping past/live)
+  // 3. Upsert it into Mongo based on gameId
   async fetchAndUpsertNextCavsGame(): Promise<GameDocument> {
-    const oddsGame = await this.fetchNextCavsGameFromOddsApi();
-    const mapped = this.mapOddsApiToGame(oddsGame);
+    const events = await this.fetchAllNbaOddsFromApi();
+    const nextCavsGame = this.pickNextUpcomingCavsGame(events);
+
+    if (!nextCavsGame) {
+      throw new InternalServerErrorException(
+        'No upcoming Cavaliers game found',
+      );
+    }
+
+    const mapped = this.mapOddsApiToGame(nextCavsGame);
 
     return this.gameModel
       .findOneAndUpdate({ gameId: mapped.gameId }, mapped, {
@@ -118,6 +165,7 @@ export class GamesService {
   }
 
   // PUBLIC: called by GET /games/next
+  // Returns the next upcoming game stored in Mongo (or null)
   async getNextGame(): Promise<Partial<Game> | null> {
     const now = new Date();
     return this.gameModel
@@ -127,6 +175,7 @@ export class GamesService {
       .exec();
   }
 
+  // PUBLIC: dev helper to seed a fake upcoming game
   async seedNextGameForDev(): Promise<GameDocument> {
     const now = new Date();
 
