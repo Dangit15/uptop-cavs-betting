@@ -30,7 +30,7 @@ export class Game {
   bookmakerKey: string; // like 'fanduel'
 
   @Prop({
-    enum: ['upcoming', 'live', 'completed'],
+    enum: ['upcoming', 'live', 'completed', 'final'],
     default: 'upcoming',
   })
   status: string;
@@ -40,6 +40,12 @@ export class Game {
 
   @Prop()
   finalAwayScore?: number;
+
+  @Prop()
+  debugHomeScore?: number;
+
+  @Prop()
+  debugAwayScore?: number;
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);

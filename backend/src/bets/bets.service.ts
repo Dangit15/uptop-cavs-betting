@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -61,45 +62,49 @@ export class BetsService {
       .exec();
   }
 
-  async settleGame(dto: any): Promise<{ game: GameDocument; settled: number }> {
-    const game = await this.gameModel.findById(dto.gameId);
+  async settleGame(gameId: string): Promise<{ game: GameDocument; updatedBets: BetDocument[] }> {
+    const game = await this.gameModel.findOne({ gameId });
     if (!game) {
       throw new NotFoundException('Game not found');
     }
 
-    // Update game scores
-    game.homeScore = dto.homeScore;
-    game.awayScore = dto.awayScore;
-    game.status = 'completed';
-    await game.save();
+    if (game.status !== 'upcoming') {
+      throw new BadRequestException('Only upcoming games can be settled');
+    }
 
-    // Spread
+    const homeScoreRaw = game.debugHomeScore;
+    const awayScoreRaw = game.debugAwayScore;
+
+    const finalHomeScore: number = homeScoreRaw ?? 110;
+    const finalAwayScore: number = awayScoreRaw ?? 102;
+
     const spread = game.spread ?? 0;
-    const margin = dto.homeScore - dto.awayScore; // positive = home wins by X
 
     const bets = await this.betModel.find({
       gameId: game._id,
       status: 'pending',
     });
 
-    let settled = 0;
+    const updatedBets: BetDocument[] = [];
 
     for (const bet of bets) {
-      let won = false;
-
-      if (bet.side === 'home') {
-        won = margin + spread > 0;
-      } else {
-        won = -margin + spread > 0;
-      }
+      const won =
+        bet.side === 'home'
+          ? finalHomeScore + spread > finalAwayScore
+          : finalAwayScore - spread > finalHomeScore;
 
       bet.status = won ? 'won' : 'lost';
       bet.settledAt = new Date();
       await bet.save();
-      settled++;
+      updatedBets.push(bet);
     }
 
-    return { game, settled };
+    game.status = 'final';
+    game.finalHomeScore = finalHomeScore;
+    game.finalAwayScore = finalAwayScore;
+    await game.save();
+
+    return { game, updatedBets };
   }
 }
 

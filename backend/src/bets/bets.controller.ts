@@ -2,7 +2,9 @@ import { Body, Controller, Get, Post, Headers, UseGuards, Req } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import { BetsService } from './bets.service';
 import { CreateBetDto } from './dto/create-bet.dto';
+import { SettleGameDto } from './dto/settle-game.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../auth/admin.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('bets')
@@ -39,13 +41,14 @@ export class BetsController {
 
   @Get('me')
   async findMyBets(@Req() req: any) {
-    console.log('DEBUG /bets/me req.user =', req.user);
-    return { user: req.user };
+    const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
+    return this.betsService.getBetsForUser(userId);
   }
 
+  @UseGuards(AdminGuard)
   @Post('settle')
-  async settleGame(@Body() body: any) {
-    return this.betsService.settleGame(body);
+  async settleGame(@Body() body: SettleGameDto) {
+    return this.betsService.settleGame(body.gameId);
   }
 }
 

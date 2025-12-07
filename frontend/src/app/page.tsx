@@ -7,6 +7,8 @@ import {
   fetchNextGame,
   fetchMyBets,
   createBet,
+  seedDevGame,
+  settleGame,
   BetSide,
   NextGame,
   Bet,
@@ -40,11 +42,15 @@ export default function HomePage() {
   const [stake, setStake] = useState<number>(10);
   const [placing, setPlacing] = useState(false);
   const [betMessage, setBetMessage] = useState<string | null>(null);
+  const [seedError, setSeedError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const [settleError, setSettleError] = useState<string | null>(null);
+  const isAdmin = session?.user?.email === "admin@example.com";
 
   useEffect(() => {
-    if (!accessToken) return;
-
     const load = async () => {
+      setGameState((prev) => ({ ...prev, loading: true }));
       try {
         const game = await fetchNextGame(accessToken);
         setGameState({ loading: false, data: game, error: null });
@@ -56,15 +62,20 @@ export default function HomePage() {
         });
       }
 
-      try {
-        const bets = await fetchMyBets(accessToken);
-        setBetsState({ loading: false, data: bets, error: null });
-      } catch (err: any) {
-        setBetsState({
-          loading: false,
-          data: [],
-          error: err?.message ?? "Failed to load bets",
-        });
+      if (accessToken) {
+        try {
+          const bets = await fetchMyBets(accessToken);
+          const normalized = Array.isArray(bets) ? bets : [];
+          setBetsState({ loading: false, data: normalized, error: null });
+        } catch (err: any) {
+          setBetsState({
+            loading: false,
+            data: [],
+            error: err?.message ?? "Failed to load bets",
+          });
+        }
+      } else {
+        setBetsState({ loading: false, data: [], error: null });
       }
     };
 
@@ -93,13 +104,83 @@ export default function HomePage() {
       const updatedBets = await fetchMyBets(accessToken);
       setBetsState({
         loading: false,
-        data: updatedBets,
+        data: Array.isArray(updatedBets) ? updatedBets : [],
         error: null,
       });
     } catch (err: any) {
       setBetMessage(err?.message ?? "Failed to place bet.");
     } finally {
       setPlacing(false);
+    }
+  };
+
+  const refreshGameAndBets = async () => {
+    try {
+      const game = await fetchNextGame(accessToken);
+      setGameState({ loading: false, data: game, error: null });
+    } catch (err: any) {
+      setGameState({
+        loading: false,
+        data: null,
+        error: err?.message ?? "Failed to load game",
+      });
+    }
+
+    if (accessToken) {
+      try {
+        const bets = await fetchMyBets(accessToken);
+        const normalized = Array.isArray(bets) ? bets : [];
+        setBetsState({ loading: false, data: normalized, error: null });
+      } catch (err: any) {
+        setBetsState({
+          loading: false,
+          data: [],
+          error: err?.message ?? "Failed to load bets",
+        });
+      }
+    }
+  };
+
+  const onSeedDevGame = async () => {
+    if (!accessToken) return;
+    setSeeding(true);
+    setSeedError(null);
+    try {
+      await seedDevGame(accessToken);
+      await refreshGameAndBets();
+    } catch (err: any) {
+      console.error(err);
+      setSeedError(err?.message ?? "Failed to seed dev game.");
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const onSettleGame = async () => {
+    if (!accessToken || !gameState.data) return;
+    setSettling(true);
+    setSettleError(null);
+    try {
+      const result = await settleGame(gameState.data.gameId, accessToken);
+      setGameState({ loading: false, data: result.game, error: null });
+      if (accessToken) {
+        try {
+          const bets = await fetchMyBets(accessToken);
+          const normalized = Array.isArray(bets) ? bets : [];
+          setBetsState({ loading: false, data: normalized, error: null });
+        } catch (err: any) {
+          setBetsState({
+            loading: false,
+            data: [],
+            error: err?.message ?? "Failed to load bets",
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setSettleError(err?.message ?? "Failed to settle game.");
+    } finally {
+      setSettling(false);
     }
   };
 
@@ -166,23 +247,54 @@ export default function HomePage() {
                     <p className="text-sm text-slate-300">
                       Status: {gameState.data.status}
                     </p>
-                    {typeof gameState.data.homeScore === "number" && (
+                    {typeof gameState.data.debugHomeScore === "number" && (
                       <p className="text-sm text-slate-300 mt-2">
-                        Home score (debug): {gameState.data.homeScore}
+                        Home score (debug): {gameState.data.debugHomeScore}
                       </p>
                     )}
-                    {typeof gameState.data.awayScore === "number" && (
+                    {typeof gameState.data.debugAwayScore === "number" && (
                       <p className="text-sm text-slate-300">
-                        Away score (debug): {gameState.data.awayScore}
+                        Away score (debug): {gameState.data.debugAwayScore}
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-slate-300">
-                    No upcoming game scheduled yet. Seed a dev game to preview
-                    the experience.
-                  </p>
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-300">
+                      No upcoming game scheduled yet. Seed a dev game to preview
+                      the experience.
+                    </p>
+                    {isAdmin && status === "authenticated" && accessToken && (
+                      <button
+                        onClick={onSeedDevGame}
+                        disabled={seeding}
+                        className="rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-4 py-2 text-sm font-medium"
+                      >
+                        {seeding ? "Seeding…" : "Seed dev game"}
+                      </button>
+                    )}
+                    {seedError && (
+                      <p className="text-xs text-red-400">{seedError}</p>
+                    )}
+                  </div>
                 )}
+                {gameState.data &&
+                  gameState.data.status === "upcoming" &&
+                  status === "authenticated" &&
+                  session?.user?.email === "admin@example.com" && (
+                    <div className="mt-3 space-y-2">
+                      <button
+                        onClick={onSettleGame}
+                        disabled={settling}
+                        className="rounded-md bg-red-500 hover:bg-red-400 disabled:bg-slate-700 px-4 py-2 text-sm font-medium"
+                      >
+                        {settling ? "Settling…" : "Settle Game"}
+                      </button>
+                      {settleError && (
+                        <p className="text-xs text-red-400">{settleError}</p>
+                      )}
+                    </div>
+                  )}
               </section>
 
               {gameState.data && (
@@ -200,6 +312,11 @@ export default function HomePage() {
                         Go to Login
                       </Link>
                     </div>
+                  ) : gameState.data.status !== "upcoming" ? (
+                    <p className="text-sm text-slate-300">
+                      Betting is closed for this game. Check back for the next
+                      matchup.
+                    </p>
                   ) : (
                     <>
                       <form className="space-y-4" onSubmit={onSubmit}>
@@ -264,43 +381,45 @@ export default function HomePage() {
                 </section>
               )}
 
-              <section className="border border-slate-700 rounded-xl p-4">
-                <h3 className="text-lg font-medium mb-2">My Bets</h3>
+              {status === "authenticated" && (
+                <section className="border border-slate-700 rounded-xl p-4">
+                  <h3 className="text-lg font-medium mb-2">My Bets</h3>
 
-                {betsState.loading && <p>Loading bets…</p>}
+                  {betsState.loading && <p>Loading bets…</p>}
 
-                {betsState.error && (
-                  <p className="text-red-400 text-sm">Error: {betsState.error}</p>
-                )}
+                  {betsState.error && (
+                    <p className="text-red-400 text-sm">Error: {betsState.error}</p>
+                  )}
 
-                {!betsState.loading && !betsState.error && (
-                  <div>
-                    {betsState.data.length > 0 ? (
-                      <ul className="space-y-3">
-                        {betsState.data.map((bet) => (
-                          <li
-                            key={bet._id}
-                            className="border border-slate-700 rounded-lg p-3 text-sm text-slate-200"
-                          >
-                            <p className="font-medium">
-                              {bet.gameId.homeTeam} vs {bet.gameId.awayTeam}
-                            </p>
-                            <p>Side: {bet.side} • Amount: {bet.amount}</p>
-                            <p>Line: {bet.line} • Status: {bet.status}</p>
-                            <p className="text-slate-400">
-                              Placed: {new Date(bet.createdAt).toLocaleString()}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-slate-300">
-                        You have no bets yet.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </section>
+                  {!betsState.loading && !betsState.error && (
+                    <div>
+                      {betsState.data.length > 0 ? (
+                        <ul className="space-y-3">
+                          {betsState.data.map((bet) => (
+                            <li
+                              key={bet._id}
+                              className="border border-slate-700 rounded-lg p-3 text-sm text-slate-200"
+                            >
+                              <p className="font-medium">
+                                {bet.gameId.homeTeam} vs {bet.gameId.awayTeam}
+                              </p>
+                              <p>Side: {bet.side} • Amount: {bet.amount}</p>
+                              <p>Line: {bet.line} • Status: {bet.status}</p>
+                              <p className="text-slate-400">
+                                Placed: {new Date(bet.createdAt).toLocaleString()}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-slate-300">
+                          You have no bets yet.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
             </div>
           )}
         </div>

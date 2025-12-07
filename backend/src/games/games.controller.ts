@@ -1,16 +1,19 @@
-import { Controller, Get, NotFoundException, Post } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Post, UseGuards } from '@nestjs/common';
 import { GamesService } from './games.service';
+import { AdminGuard } from '../auth/admin.guard';
 
 @Controller('games')
 export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
 
   // Hit this to pull from Odds API and upsert into Mongo
+  @UseGuards(AdminGuard)
   @Post('next')
   async refreshNextGame() {
     return this.gamesService.fetchAndUpsertNextCavsGame(); // expected to fetch current Cavs odds data and upsert the next game document
   }
 
+  @UseGuards(AdminGuard)
   @Post('dev/seed')
   async seedDevGame() {
     return this.gamesService.seedNextGameForDev(); // expected to populate a dev-only next game record for testing

@@ -186,6 +186,14 @@ export class GamesService {
       .exec();
 
     if (existing) {
+      if (
+        existing.debugHomeScore === undefined ||
+        existing.debugAwayScore === undefined
+      ) {
+        existing.debugHomeScore = 110;
+        existing.debugAwayScore = 102;
+        await existing.save();
+      }
       return existing;
     }
 
@@ -221,7 +229,11 @@ export class GamesService {
       ],
     };
 
-    const mapped = this.mapOddsApiToGame(fakeOddsGame);
+    const mapped: Partial<Game> = {
+      ...this.mapOddsApiToGame(fakeOddsGame),
+      debugHomeScore: 110,
+      debugAwayScore: 102,
+    };
 
     return this.gameModel
       .findOneAndUpdate({ gameId: mapped.gameId }, mapped, {

@@ -8,8 +8,8 @@ export type NextGame = {
   spread: number;
   bookmakerKey: string;
   status: string;
-  homeScore?: number;
-  awayScore?: number;
+  debugHomeScore?: number;
+  debugAwayScore?: number;
 };
 
 export async function fetchNextGame(
@@ -42,14 +42,47 @@ export type BetSide = "home" | "away";
 
 export type CreateBetPayload = {
   gameId: string;
-  userId: string;
   side: BetSide;
   stake: number;
 };
 
+export async function seedDevGame(accessToken: string) {
+  const res = await fetch(`${API_BASE_URL}/games/dev/seed`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to seed dev game: ${res.status} ${text}`);
+  }
+
+  return res.json();
+}
+
+export async function settleGame(gameId: string, accessToken: string) {
+  const res = await fetch(`${API_BASE_URL}/bets/settle`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ gameId }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to settle game: ${res.status} ${text}`);
+  }
+
+  return res.json();
+}
+
 export async function createBet(
   accessToken: string,
-  bet: { gameId: string; side: "cavs" | "opponent"; amount: number },
+  bet: CreateBetPayload,
 ) {
   const res = await fetch(`${API_BASE_URL}/bets`, {
     method: "POST",
@@ -86,7 +119,7 @@ export type Bet = {
   createdAt: string;
 };
 
-export async function fetchMyBets(accessToken: string) {
+export async function fetchMyBets(accessToken: string): Promise<Bet[]> {
   const res = await fetch(`${API_BASE_URL}/bets/me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
