@@ -131,7 +131,7 @@ http://localhost:3000
 **User Workflow**  
 - Log in as user@example.com  
 - View the upcoming Cavs game  
-- Place spread bets (multiple bets per game are allowed in this implementation)  
+- Place a spread bet (one bet per game per user is enforced to prevent duplicates)
 - Check status in My Bets  
 - Status updates after admin settlement  
 
@@ -172,3 +172,37 @@ root/
 - Persist real user accounts instead of in-memory auth  
 - Improve mobile/responsive UI  
 - Add backend unit tests for bet and settlement logic  
+
+## Live Odds Mode vs Dev Mode
+This project supports two ways of running the betting experience:
+
+**Live Odds Mode**  
+Requires a valid ODDS_API_KEY in the backend environment.  
+The backend fetches the next Cavaliers game directly from The Odds API.  
+If the key is missing, the frontend now shows a clear message explaining that live odds are disabled.  
+
+**Dev Mode (no API key required)**  
+Available to admin users via the admin tools in the UI.  
+You can seed a fully simulated Cavaliers matchup with one click.  
+You can reset all data to return the app to a clean state.  
+
+These two modes allow the app to function both with real external data and as a fully self-contained demo for development or review.
+
+## Why This Architecture?
+This prototype mirrors a pragmatic production-style split between frontend and backend responsibilities:
+
+**NestJS backend**  
+Centralizes authentication, authorization, and domain logic.  
+Keeps game ingestion, bet settlement, and points updates consistent and testable.  
+Uses MongoDB to store game, bet, and points data in a flexible, document-friendly model.  
+
+**Next.js frontend**  
+Provides a clean UI boundary with server-side session validation through NextAuth.  
+Handles authenticated user flows, form interactions, and conditional admin tools.  
+Uses API helpers to keep all network interactions predictable and isolated.  
+
+**Why this matters**  
+The separation of concerns makes the system easy to extend to new sports, additional bet types, or cron-based odds polling.  
+The structure supports scaling the backend independently of the user interface.  
+The app can run in either live-odds mode or self-contained dev mode without altering architecture.  
+This approach keeps the prototype simple, maintainable, and aligned with how a production betting backend and modern React client would be structured.

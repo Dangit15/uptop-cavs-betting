@@ -48,12 +48,12 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white border border-slate-200 shadow-lg rounded-xl p-6">
-        <h1 className="text-2xl font-semibold text-slate-900 mb-4">Login</h1>
+    <main className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-md p-8 space-y-4">
+        <h1 className="text-2xl font-semibold text-black">Login</h1>
         <form className="space-y-4" onSubmit={onSubmit}>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700" htmlFor="email">
+            <label className="text-sm font-medium text-black" htmlFor="email">
               Email
             </label>
             <input
@@ -61,13 +61,13 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#ff007a]"
               required
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700" htmlFor="password">
+            <label className="text-sm font-medium text-black" htmlFor="password">
               Password
             </label>
             <input
@@ -75,7 +75,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#ff007a]"
               required
             />
           </div>
@@ -85,7 +85,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-indigo-600 text-white py-2 text-sm font-medium hover:bg-indigo-500 disabled:opacity-70"
+            className="w-full rounded-full bg-[#ff007a] text-white py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-70 transition"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>

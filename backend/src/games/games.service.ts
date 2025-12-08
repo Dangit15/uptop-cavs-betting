@@ -23,7 +23,7 @@ export class GamesService {
     const key = process.env.ODDS_API_KEY;
     if (!key) {
       throw new InternalServerErrorException(
-        'ODDS_API_KEY is not configured in the environment',
+        'Missing ODDS_API_KEY in configuration',
       );
     }
     return key;

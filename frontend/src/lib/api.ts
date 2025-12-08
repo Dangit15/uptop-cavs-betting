@@ -31,8 +31,21 @@ export async function fetchNextGame(
   }
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to fetch next game: ${res.status} ${text}`);
+    let message = `Failed to fetch next game`;
+    try {
+      const body = await res.json();
+      if (typeof body?.message === "string") {
+        message = body.message;
+      } else if (Array.isArray(body?.message) && body.message.length > 0) {
+        message = body.message[0];
+      }
+    } catch {
+      // fallback to default message if parse fails
+    }
+    if (message.includes("Missing ODDS_API_KEY")) {
+      throw new Error("MISSING_ODDS_API_KEY");
+    }
+    throw new Error(message);
   }
 
   return res.json();
@@ -163,6 +176,7 @@ export type Bet = {
     awayTeam: string;
     startTime: string;
     spread: number;
+    bookmakerKey: string;
     status: string;
   };
   amount: number;

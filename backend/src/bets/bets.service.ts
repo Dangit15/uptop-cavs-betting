@@ -68,7 +68,11 @@ export class BetsService {
     return this.betModel
       .find({ userId })
       .sort({ createdAt: -1 })
-      .populate('gameId')
+      .populate({
+        path: 'gameId',
+        select:
+          'gameId homeTeam awayTeam startTime spread status bookmakerKey',
+      })
       .exec();
   }
 
