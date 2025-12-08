@@ -59,7 +59,13 @@ export type CreateBetPayload = {
   stake: number;
 };
 
-export async function seedDevGame(accessToken: string) {
+export type SeedDevGameResponse = {
+  status: number;
+  ok: boolean;
+  body: any | null;
+};
+
+export async function seedDevGame(accessToken: string): Promise<SeedDevGameResponse> {
   const res = await fetch(`${API_BASE_URL}/games/dev/seed`, {
     method: "POST",
     headers: {
@@ -67,12 +73,40 @@ export async function seedDevGame(accessToken: string) {
     },
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to seed dev game: ${res.status} ${text}`);
+  let body: any = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
   }
 
-  return res.json();
+  return {
+    status: res.status,
+    ok: res.ok,
+    body,
+  };
+}
+
+export async function seedFakeGame(accessToken: string): Promise<SeedDevGameResponse> {
+  const res = await fetch(`${API_BASE_URL}/games/dev/seed-fake`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  let body: any = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  return {
+    status: res.status,
+    ok: res.ok,
+    body,
+  };
 }
 
 export async function settleGame(

@@ -8,6 +8,7 @@ import {
   fetchMyBets,
   createBet,
   seedDevGame,
+  seedFakeGame,
   settleGame,
   getMyPoints,
   resetDemoData,
@@ -45,8 +46,12 @@ export default function HomePage() {
   const [placing, setPlacing] = useState(false);
   const [betMessage, setBetMessage] = useState<string | null>(null);
   const [betError, setBetError] = useState<string | null>(null);
-  const [seedError, setSeedError] = useState<string | null>(null);
+  const [seedStatus, setSeedStatus] = useState<{
+    tone: "success" | "info" | "error";
+    message: string;
+  } | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [seedingFake, setSeedingFake] = useState(false);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<"pending" | "success" | "error" | null>(null);
@@ -187,15 +192,70 @@ export default function HomePage() {
   const onSeedDevGame = async () => {
     if (!accessToken) return;
     setSeeding(true);
-    setSeedError(null);
+    setSeedStatus(null);
     try {
-      await seedDevGame(accessToken);
-      await refreshGameAndBets();
-    } catch (err: any) {
+      const result = await seedDevGame(accessToken);
+      if (result.status === 200 || result.status === 201) {
+        setSeedStatus({
+          tone: "success",
+          message: "Seeded next game from Odds API.",
+        });
+        await refreshGameAndBets();
+        return;
+      }
+
+      const messageFromApi =
+        typeof result.body?.message === "string" ? result.body.message : null;
+
+      if (result.status === 404 && messageFromApi === "No upcoming Cavs game found from Odds API") {
+        setSeedStatus({
+          tone: "info",
+          message: "No upcoming Cavaliers game is available from the Odds API right now.",
+        });
+        return;
+      }
+
+      setSeedStatus({
+        tone: "error",
+        message: "Failed to seed dev game. Please try again later.",
+      });
+    } catch (err) {
       console.error(err);
-      setSeedError(err?.message ?? "Failed to seed dev game.");
+      setSeedStatus({
+        tone: "error",
+        message: "Failed to seed dev game. Please try again later.",
+      });
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const onSeedFakeGame = async () => {
+    if (!accessToken) return;
+    setSeedingFake(true);
+    setSeedStatus(null);
+    try {
+      const result = await seedFakeGame(accessToken);
+      if (result.status === 201) {
+        setSeedStatus({
+          tone: "success",
+          message: "Seeded fake demo game.",
+        });
+        await refreshGameAndBets();
+        return;
+      }
+      setSeedStatus({
+        tone: "error",
+        message: "Failed to seed fake demo game.",
+      });
+    } catch (err) {
+      console.error(err);
+      setSeedStatus({
+        tone: "error",
+        message: "Failed to seed fake demo game.",
+      });
+    } finally {
+      setSeedingFake(false);
     }
   };
 
@@ -340,10 +400,17 @@ export default function HomePage() {
                       {gameState.data.status === "final" &&
                         typeof (gameState.data as any).finalHomeScore === "number" &&
                         typeof (gameState.data as any).finalAwayScore === "number" && (
-                          <p className="text-sm text-gray-700">
-                            Final score: Cleveland Cavaliers {(gameState.data as any).finalHomeScore} –{" "}
-                            {gameState.data.awayTeam} {(gameState.data as any).finalAwayScore}
-                          </p>
+                          <div className="mt-2 text-sm text-gray-700">
+                            <div className="font-semibold">Final score</div>
+                            <div className="flex justify-between">
+                              <span>{gameState.data.homeTeam}</span>
+                              <span>{(gameState.data as any).finalHomeScore}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>{gameState.data.awayTeam}</span>
+                              <span>{(gameState.data as any).finalAwayScore}</span>
+                            </div>
+                          </div>
                         )}
                     </div>
                     <div className="space-y-2">
@@ -365,16 +432,35 @@ export default function HomePage() {
                   <div className="space-y-3 text-sm text-gray-600">
                     <p>No active game available.</p>
                     {isAdmin && devSeedEnabled && status === "authenticated" && accessToken && (
-                      <button
-                        onClick={onSeedDevGame}
-                        disabled={seeding}
-                        className="rounded-full bg-[#ff007a] text-white px-4 py-2 text-sm font-medium shadow-sm hover:opacity-90 transition disabled:opacity-60"
-                      >
-                        {seeding ? "Seeding…" : "Seed dev game"}
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={onSeedDevGame}
+                          disabled={seeding}
+                          className="rounded-full bg-[#ff007a] text-white px-4 py-2 text-sm font-medium shadow-sm hover:opacity-90 transition disabled:opacity-60"
+                        >
+                          {seeding ? "Seeding…" : "Seed dev game"}
+                        </button>
+                        <button
+                          onClick={onSeedFakeGame}
+                          disabled={seedingFake}
+                          className="rounded-full bg-gray-900 text-white px-4 py-2 text-sm font-medium shadow-sm hover:opacity-90 transition disabled:opacity-60"
+                        >
+                          {seedingFake ? "Seeding…" : "Seed demo game (fake data)"}
+                        </button>
+                      </div>
                     )}
-                    {seedError && (
-                      <p className="text-xs text-red-500">{seedError}</p>
+                    {seedStatus && (
+                      <p
+                        className={`text-xs ${
+                          seedStatus.tone === "error"
+                            ? "text-red-500"
+                            : seedStatus.tone === "info"
+                              ? "text-gray-500"
+                              : "text-green-600"
+                        }`}
+                      >
+                        {seedStatus.message}
+                      </p>
                     )}
                   </div>
                 )}

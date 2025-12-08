@@ -1,213 +1,73 @@
-# UpTop Cavaliers Betting
+# UpTop Cavs Betting
 
-## Project Overview
-This repo implements a play-to-earn Cavaliers betting demo built for the UpTop coding challenge.  
-It uses a Next.js 14 App Router frontend (NextAuth + Tailwind) backed by a NestJS API with JWT authentication and MongoDB.  
-The core flow: seed a Cavs game, place spread bets, let an admin settle the game, and view win/loss results in “My Bets.”
+## Project overview
+UpTop Cavs Betting is a full-stack prototype for a single-team sportsbook experience focused on the Cleveland Cavaliers. It uses a NestJS backend, a Next.js 14 App Router frontend, MongoDB for persistence, and integrates with The Odds API for live lines. The goal is to demonstrate ingesting and settling a single upcoming game with simple spread betting.
 
----
+## High-level architecture
+- Backend: NestJS modules for Games, Bets, Auth; MongoDB via Mongoose; DTO validation; JWT auth with admin vs regular roles.
+- Frontend: Next.js 14 App Router with server + client components; lightweight Rain-style theme; API helpers for backend calls.
+- External: The Odds API as the upstream lines provider (FanDuel spreads).
 
 ## Features
-- Email/password authentication via NextAuth Credentials Provider + JWTs issued by the NestJS backend.  
-- User vs Admin roles (admin@example.com is the only admin).  
-- “Next Cavs Game” card with:
-  - Dev game seeding (admin only)  
-  - Read-only view for logged-out users  
-- User-scoped betting with Cavs vs opponent spread selection.  
-- “My Bets” history tied to the authenticated user.  
-- Admin-only settlement that finalizes a game and updates related bets to won/lost/push, awarding 100 points per winning bet (no points for push).  
-- Selections are stored as `"home"` or `"away"` (UI labels these as Cavs side / Opponent side).  
-- Clean and consistent loading, empty, logged-out, and finalized-game states.
+- User login/logout with JWT-backed sessions; admin vs regular user roles.
+- Admin-only “next game” seeding from live Odds API data.
+- Dev-only fake demo seeding (Cavs vs random realistic opponent) when no live market exists.
+- Bet placement on Cavs side vs opponent side.
+- Spread-based settlement with correct grading using final scores and spread.
+- Points awarding and bet history per user.
+- Reset demo data to clear all games and bets.
 
----
+## Odds API integration and fallback behavior
+- Backend GamesService calls The Odds API `/odds` for `basketball_nba` with `bookmakers=fanduel`, `markets=spreads`.
+- Filtering: only events where home or away matches the configured focus team (defaults to Cleveland Cavaliers via `FOCUS_TEAM_NAME`), and only future games. Picks the soonest upcoming game. Spread is normalized to the app convention (negative = Cavs favored).
+- Fallback: if no upcoming Cavs game with odds is available, `POST /games/dev/seed` returns `404` with `{ message: 'No upcoming Cavs game found from Odds API' }`; the frontend surfaces this neutrally and keeps the “No active game available” state.
+- Fake demo seed: separate dev-only endpoint seeds a Cavs home game vs a random opponent (Bulls, Wizards, Hornets, Knicks, Heat, Celtics) at a realistic tipoff in the next few days with `bookmakerKey: demo`—for demos when no live market exists.
 
-## Tech Stack
+## Environment variables
+Backend (`backend/.env`):
+- `MONGODB_URI` – MongoDB connection string.
+- `ODDS_API_KEY` – The Odds API key for live odds ingestion.
+- `JWT_SECRET` – Secret for signing JWTs.
+- `NODE_ENV` – Node environment flag.
+- `PORT` – Backend HTTP port (default 3001).
+- `DEV_SEED_ENABLED` – Enables dev seed endpoints (live seed and fake demo seed) when `true`.
+- `FOCUS_TEAM_NAME` – Team to target for odds (defaults to `Cleveland Cavaliers`; e.g., set to `Indiana Pacers` to test another team).
 
-### Frontend
-- Next.js 14 (App Router)  
-- TypeScript  
-- Tailwind CSS  
-- NextAuth (Credentials provider)
+Frontend (`frontend/.env.local` or similar):
+- `NEXT_PUBLIC_API_BASE_URL` – Base URL for the backend API (e.g., `http://localhost:3001`).
+- `NEXT_PUBLIC_DEV_SEED_ENABLED` – Toggles visibility of admin seed controls when `true`.
 
-### Backend
-- NestJS  
-- TypeScript  
-- MongoDB + Mongoose  
-- JWT-based authentication with AdminGuard
+## Running the project locally
+1) Clone the repo.  
+2) Install dependencies in `backend/` and `frontend/` (`npm install`).  
+3) Create `.env` files for backend and frontend using the variables above.  
+4) Start MongoDB locally.  
+5) Run the backend: `cd backend && npm run start:dev`.  
+6) Run the frontend: `cd frontend && npm run dev`.  
+7) Useful scripts: backend `npm run start:dev`; frontend `npm run dev` (add tests/scripts as needed).
 
-### Tooling
-- Monorepo structure (`frontend/` and `backend/`)  
-- dotenv-driven configuration  
-- MongoDB Compass for debugging  
-- Next/Nest dev and build scripts  
+## Workflows and how to use the app
+- As admin:
+  - Log in.
+  - Use “Seed dev game” to pull the next Cavs game from The Odds API (when odds exist).
+  - Use “Seed demo game (fake data)” to create a Cavs vs random opponent demo matchup when no live market exists.
+  - Enter final scores and settle the game.
+  - Optionally reset demo data to clear games/bets.
+- As a regular user:
+  - Log in.
+  - View the next game card.
+  - Place a bet on Cavs or opponent side.
+  - After admin settlement, view bet result and points total.
 
----
+## Implementation notes / design decisions
+- Live Odds API seeding and fake demo seeding are separated and flag-guarded to avoid polluting data and to allow demos when markets are unavailable.
+- Spread settlement grades against the stored spread: target margin is `-spread`; final margin vs target determines win/loss/push.
+- “No upcoming Cavs game” surfaces as a 404 (not 500) to keep the UI stable and informative.
+- DTOs, validation, and consistent logging aim to keep the backend production-like.
 
-## Getting Started
-
-### Prerequisites
-- Node.js 18+  
-- MongoDB running locally (Docker, Homebrew, or MongoDB Compass)
-
----
-
-### Environment Variables
-
-Create a `.env` file in **backend/**:
-
-```env
-PORT=3001
-MONGODB_URI=mongodb://localhost:27017/cavs-betting-dev
-JWT_SECRET=dev-secret
-ODDS_API_KEY=your_key_here  # required for live odds; admin dev seeding is available without this
-```
-
-Create a `.env.local` file in **frontend/**:
-
-```env
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=dev-secret
-NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
-```
-
-### Install Dependencies
-
-```bash
-# Backend
-cd backend
-npm install
-
-# Frontend
-cd ../frontend
-npm install
-```
-
-### Run the Backend
-
-```bash
-cd backend
-npm run start:dev
-```
-
-Backend runs at:  
-http://localhost:3001
-
-### Run the Frontend
-
-```bash
-cd frontend
-npm run dev
-```
-
-Frontend runs at:  
-http://localhost:3000
-
----
-
-## Demo Accounts
-
-**User Account**  
-- Email: user@example.com  
-- Password: password  
-- Can view games, place bets, and see My Bets  
-- Cannot seed or settle games  
-
-**Admin Account**  
-- Email: admin@example.com  
-- Password: admin  
-- Can seed dev games, settle games, and place bets  
-
----
-
-## Core Flows
-
-**Admin Workflow**  
-- Log in as admin@example.com  
-- Click “Seed dev game”  
-- Optionally place a bet  
-- Click “Settle Game”  
-- Game moves to final and bets become won/lost/push (push returns stake, no points)  
-
-**User Workflow**  
-- Log in as user@example.com  
-- View the upcoming Cavs game  
-- Place a spread bet (one bet per game per user is enforced to prevent duplicates)
-- Check status in My Bets  
-- Status updates after admin settlement  
-
-**Logged-Out Experience**  
-- Can view upcoming game  
-- Cannot place bets  
-- Cannot view My Bets  
-
----
-
-## Architecture Notes
-
-**Monorepo Layout**  
-```
-root/
-  backend/     # NestJS API
-  frontend/    # Next.js application
-```
-
-**Backend Structure**  
-- AuthModule — JWT issuance, in-memory user store  
-- GamesModule — dev game seeding + retrieval  
-- BetsModule — create bets, fetch bets, settle bets  
-- AdminGuard — restricts admin actions  
-- PointsModule — stores per-user point totals; settlement awards +100 per winning bet
-
-**Frontend Structure**  
-- NextAuth credential login  
-- JWT stored in session  
-- Homepage loads: next game, user bets, admin tools  
-- API helpers wrap backend calls  
-
----
-
-## Future Enhancements
-- Integrate real Odds API instead of dev seeding  
-- Add cron-based automatic game refresh  
-- Persist real user accounts instead of in-memory auth  
-- Improve mobile/responsive UI  
-- Add backend unit tests for bet and settlement logic  
-
-## Live Odds Mode vs Dev Mode
-This project supports two ways of running the betting experience:
-
-**Live Odds Mode**  
-Requires a valid ODDS_API_KEY in the backend environment.  
-The backend fetches the next Cavaliers game directly from The Odds API.  
-If the key is missing, the frontend now shows a clear message explaining that live odds are disabled.  
-
-**Dev Mode (no API key required)**  
-Available to admin users via the admin tools in the UI.  
-You can seed a fully simulated Cavaliers matchup with one click.  
-You can reset all data to return the app to a clean state.  
-
-These two modes allow the app to function both with real external data and as a fully self-contained demo for development or review.
-
-## Why This Architecture?
-This prototype mirrors a pragmatic production-style split between frontend and backend responsibilities:
-
-**NestJS backend**  
-Centralizes authentication, authorization, and domain logic.  
-Keeps game ingestion, bet settlement, and points updates consistent and testable.  
-Uses MongoDB to store game, bet, and points data in a flexible, document-friendly model.  
-
-**Next.js frontend**  
-Provides a clean UI boundary with server-side session validation through NextAuth.  
-Handles authenticated user flows, form interactions, and conditional admin tools.  
-Uses API helpers to keep all network interactions predictable and isolated.  
-
-**Why this matters**  
-The separation of concerns makes the system easy to extend to new sports, additional bet types, or cron-based odds polling.  
-The structure supports scaling the backend independently of the user interface.  
-The app can run in either live-odds mode or self-contained dev mode without altering architecture.  
-This approach keeps the prototype simple, maintainable, and aligned with how a production betting backend and modern React client would be structured.
-
-## Dev Seeding Flags
-- **Backend:** `DEV_SEED_ENABLED` (default `"true"`). When set to `"false"`, the dev seed endpoint is blocked with a Forbidden response, preventing fake game creation.  
-- **Frontend:** `NEXT_PUBLIC_DEV_SEED_ENABLED` (default `"true"`). When set to `"false"`, the admin “Seed dev game” button is hidden in the UI.  
-These flags let you run a stricter demo without dev seeding while keeping the live-odds flow unchanged.
+## Future improvements / nice-to-haves
+- Deploy to managed hosting (e.g., Vercel for frontend, Render/Fly.io for backend).
+- Scheduled job to refresh odds automatically instead of manual seeding.
+- Additional bet types (moneyline, totals).
+- Multi-game history and pagination.
+- Real auth provider integration.

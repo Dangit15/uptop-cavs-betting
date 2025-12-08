@@ -1,7 +1,12 @@
-import { Controller, Get, NotFoundException, Post, UseGuards, ForbiddenException } from '@nestjs/common';
+// Notes:
+// - Next Cavs game is surfaced via GET /games/next which returns the soonest upcoming Mongo record (populated by the Odds API flow in POST /games/next).
+// - POST /games/next triggers a live Odds API fetch/upsert; no seeded data unless dev seeding is explicitly called.
+// - Seed endpoint: POST /games/dev/seed (guarded + toggleable via isDevSeedEnabled) calls GamesService.seedNextGameForDev to upsert the next Cavs game using live Odds API data.
+import { Controller, Get, NotFoundException, Post, UseGuards, ForbiddenException, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
 import { GamesService } from './games.service';
 import { AdminGuard } from '../auth/admin.guard';
 import { isDevSeedEnabled } from '../config/dev-seed.config';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('games')
 export class GamesController {
@@ -16,11 +21,29 @@ export class GamesController {
 
   @UseGuards(AdminGuard)
   @Post('dev/seed')
+  // Returns 404 with JSON when Odds API has no upcoming Cavs game
   async seedDevGame() {
     if (!isDevSeedEnabled()) {
       throw new ForbiddenException('Dev seeding is disabled in this environment.');
     }
-    return this.gamesService.seedNextGameForDev(); // expected to populate a dev-only next game record for testing
+    const seeded = await this.gamesService.seedNextGameForDev(); // now pulls real Odds API data for the next Cavs game
+    if (!seeded) {
+      // If no Cavs game is available from Odds API, respond with 404 so frontend can show "No active game"
+      throw new NotFoundException({ message: 'No upcoming Cavs game found from Odds API' });
+    }
+    return seeded;
+  }
+
+  // Dev-only fake data seed endpoint for demo purposes (no Odds API call)
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post('dev/seed-fake')
+  @HttpCode(HttpStatus.CREATED)
+  async seedFakeDevGame() {
+    const seeded = await this.gamesService.seedFakeDemoGameForDev();
+    if (!seeded) {
+      throw new BadRequestException({ message: 'Unable to seed fake demo game.' });
+    }
+    return seeded;
   }
 
   // Hit this to read the stored next game from Mongo

@@ -1,3 +1,10 @@
+// fetchNextCavsGameFromOddsApi:
+// - Calls Odds API /odds with FanDuel spreads, filters exact match on focusTeamName (env FOCUS_TEAM_NAME, default Cavs), future-only, picks soonest, and maps spread/bookmaker details.
+// - Returns null (no throw) when no matching game or no usable spreads market; also returns null if Odds API request fails (logged).
+// Notes:
+// - Next Cavs game is chosen by fetching NBA odds, filtering events that include "cavaliers" and are in the future, then picking the soonest commence_time and mapping it into the Game schema.
+// - This service calls The Odds API (/odds) for real data (no cache) and seedNextGameForDev now reuses that live data instead of a fake record.
+// - Seed-related helper: seedNextGameForDev upserts a real upcoming game into Mongo when allowed.
 import {
   Injectable,
   InternalServerErrorException,
@@ -8,11 +15,22 @@ import { Model } from 'mongoose';
 import { firstValueFrom } from 'rxjs';
 import { Game, GameDocument } from './schemas/game.schema';
 
+interface NextCavsGameFromApi {
+  externalGameId: string;
+  homeTeam: string;
+  awayTeam: string;
+  startTime: Date;
+  spread: number;
+  bookmakerKey: string;
+}
+
 @Injectable()
 export class GamesService {
   private readonly oddsBaseUrl =
     'https://api.the-odds-api.com/v4/sports/basketball_nba';
   private readonly cavsTeamName = 'cavaliers';
+  private readonly focusTeamName: string =
+    process.env.FOCUS_TEAM_NAME || 'Cleveland Cavaliers';
 
   constructor(
     private readonly httpService: HttpService,
@@ -164,6 +182,97 @@ export class GamesService {
       .exec();
   }
 
+  private async fetchNextCavsGameFromOddsApi(): Promise<NextCavsGameFromApi | null> {
+    const url = `${this.oddsBaseUrl}/odds`;
+
+    let data: any[];
+    try {
+      const response$ = this.httpService.get(url, {
+        params: {
+          regions: 'us',
+          markets: 'spreads',
+          oddsFormat: 'american',
+          bookmakers: 'fanduel',
+          apiKey: this.apiKey,
+        },
+      });
+
+      const response = await firstValueFrom(response$);
+      data = response.data;
+
+      if (!Array.isArray(data)) {
+        console.error(
+          'Error fetching next Cavs game from Odds API: unexpected response shape',
+          { receivedType: typeof data },
+        );
+        return null;
+      }
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const message = error?.message ?? 'Unknown error';
+      console.error('Error fetching next Cavs game from Odds API:', {
+        status,
+        message,
+        data: error?.response?.data,
+      });
+      return null;
+    }
+
+    const now = Date.now();
+    const cavsEvents = data
+      .filter(
+        (event: any) =>
+          event.home_team === this.focusTeamName ||
+          event.away_team === this.focusTeamName,
+      )
+      .filter((event: any) => {
+        const commence = new Date(event.commence_time).getTime();
+        return !Number.isNaN(commence) && commence >= now;
+      });
+
+    if (cavsEvents.length === 0) {
+      return null;
+    }
+
+    cavsEvents.sort(
+      (a: any, b: any) =>
+        new Date(a.commence_time).getTime() -
+        new Date(b.commence_time).getTime(),
+    );
+
+    const nextEvent = cavsEvents[0];
+    const fanduel = (nextEvent.bookmakers ?? []).find(
+      (b: any) => b.key === 'fanduel',
+    );
+    if (!fanduel) {
+      return null;
+    }
+
+    const spreadsMarket = (fanduel.markets ?? []).find(
+      (m: any) => m.key === 'spreads',
+    );
+    if (!spreadsMarket) {
+      return null;
+    }
+
+    const outcomes = spreadsMarket.outcomes ?? [];
+    const cavsOutcome = outcomes.find(
+      (o: any) => o.name === this.focusTeamName,
+    );
+    if (!cavsOutcome || typeof cavsOutcome.point !== 'number') {
+      return null;
+    }
+
+    return {
+      externalGameId: nextEvent.id,
+      homeTeam: nextEvent.home_team,
+      awayTeam: nextEvent.away_team,
+      startTime: new Date(nextEvent.commence_time),
+      spread: cavsOutcome.point,
+      bookmakerKey: 'fanduel',
+    };
+  }
+
   // PUBLIC: called by GET /games/next
   // Returns the next upcoming game stored in Mongo (or null)
   async getNextGame(): Promise<Partial<Game> | null> {
@@ -175,64 +284,25 @@ export class GamesService {
       .exec();
   }
 
-  // PUBLIC: dev helper to seed a fake upcoming game
-  async seedNextGameForDev(): Promise<GameDocument> {
-    const now = new Date();
+  // PUBLIC: dev helper to seed an upcoming game using live Odds API data
+  async seedNextGameForDev(): Promise<GameDocument | null> {
+    const nextGame = await this.fetchNextCavsGameFromOddsApi();
 
-    // If there is already an upcoming game in the future, just return it
-    const existing = await this.gameModel
-      .findOne({ status: 'upcoming', startTime: { $gt: now } })
-      .sort({ startTime: 1 })
-      .exec();
-
-    if (existing) {
-      if (
-        existing.debugHomeScore === undefined ||
-        existing.debugAwayScore === undefined
-      ) {
-        existing.debugHomeScore = 110;
-        existing.debugAwayScore = 102;
-        await existing.save();
-      }
-      return existing;
+    if (!nextGame) {
+      console.warn(
+        'Dev seed: No upcoming Cavs game found from Odds API, skipping seed.',
+      );
+      return null;
     }
 
-    // Otherwise create a fake Cavs game for dev purposes only
-    const start = new Date();
-    start.setDate(start.getDate() + 1);
-    start.setHours(19, 0, 0, 0); // tomorrow at 7:00 PM local time
-
-    const fakeOddsGame = {
-      id: 'dev-game-1',
-      home_team: 'Cleveland Cavaliers',
-      away_team: 'Los Angeles Lakers',
-      commence_time: start.toISOString(),
-      bookmakers: [
-        {
-          key: 'dev-book',
-          markets: [
-            {
-              key: 'spreads',
-              outcomes: [
-                {
-                  name: 'Cleveland Cavaliers',
-                  point: -3.5,
-                },
-                {
-                  name: 'Los Angeles Lakers',
-                  point: 3.5,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-
     const mapped: Partial<Game> = {
-      ...this.mapOddsApiToGame(fakeOddsGame),
-      debugHomeScore: 110,
-      debugAwayScore: 102,
+      gameId: nextGame.externalGameId,
+      homeTeam: nextGame.homeTeam,
+      awayTeam: nextGame.awayTeam,
+      startTime: nextGame.startTime,
+      spread: nextGame.spread,
+      bookmakerKey: nextGame.bookmakerKey,
+      status: 'upcoming',
     };
 
     return this.gameModel
@@ -241,5 +311,61 @@ export class GamesService {
         new: true,
       })
       .exec();
+  }
+
+  // PUBLIC: dev-only fake seed for demo purposes (no Odds API)
+  async seedFakeDemoGameForDev(): Promise<GameDocument | null> {
+    try {
+      if (process.env.DEV_SEED_ENABLED !== 'true') {
+        console.warn('Dev seed: DEV_SEED_ENABLED is not true, skipping fake seed.');
+        return null;
+      }
+
+      const opponents = [
+        'Chicago Bulls',
+        'Washington Wizards',
+        'Charlotte Hornets',
+        'New York Knicks',
+        'Miami Heat',
+        'Boston Celtics',
+      ];
+      const opponent =
+        opponents[Math.floor(Math.random() * opponents.length)] ?? 'Chicago Bulls';
+
+      const daysAhead = Math.floor(Math.random() * 3) + 1; // 1 to 3 days
+      const tipoffOptions = [
+        { hours: 19, minutes: 0 },
+        { hours: 19, minutes: 30 },
+        { hours: 20, minutes: 0 },
+      ];
+      const tipoff = tipoffOptions[Math.floor(Math.random() * tipoffOptions.length)] ?? {
+        hours: 19,
+        minutes: 0,
+      };
+
+      const start = new Date();
+      start.setDate(start.getDate() + daysAhead);
+      start.setHours(tipoff.hours, tipoff.minutes, 0, 0); // zero seconds/millis for cleaner display
+
+      const mapped: Partial<Game> = {
+        gameId: 'demo-fake-game',
+        homeTeam: 'Cleveland Cavaliers',
+        awayTeam: opponent,
+        startTime: start,
+        spread: -5,
+        bookmakerKey: 'demo',
+        status: 'upcoming',
+      };
+
+      return this.gameModel
+        .findOneAndUpdate({ gameId: mapped.gameId }, mapped, {
+          upsert: true,
+          new: true,
+        })
+        .exec();
+    } catch (error) {
+      console.error('Dev seed: Failed to seed fake demo game', error);
+      return null;
+    }
   }
 }
