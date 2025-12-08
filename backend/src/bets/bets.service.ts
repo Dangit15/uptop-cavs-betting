@@ -76,8 +76,8 @@ export class BetsService {
       .exec();
   }
 
-  async settleGame(gameId: string): Promise<{ game: GameDocument; updatedBets: BetDocument[] }> {
-    const game = await this.gameModel.findOne({ gameId });
+  async settleGame(dto: { gameId: string; finalHomeScore?: number; finalAwayScore?: number }): Promise<{ game: GameDocument; updatedBets: BetDocument[] }> {
+    const game = await this.gameModel.findOne({ gameId: dto.gameId });
     if (!game) {
       throw new NotFoundException('Game not found');
     }
@@ -86,16 +86,24 @@ export class BetsService {
       throw new BadRequestException('Only upcoming games can be settled');
     }
 
-    const homeScoreRaw = game.debugHomeScore;
-    const awayScoreRaw = game.debugAwayScore;
+    if (
+      dto.finalHomeScore === undefined ||
+      dto.finalAwayScore === undefined ||
+      !Number.isFinite(dto.finalHomeScore) ||
+      !Number.isFinite(dto.finalAwayScore)
+    ) {
+      throw new BadRequestException('finalHomeScore and finalAwayScore are required numeric values');
+    }
 
-    const finalHomeScore: number = homeScoreRaw ?? 110;
-    const finalAwayScore: number = awayScoreRaw ?? 102;
+    const finalHomeScore: number = dto.finalHomeScore;
+    const finalAwayScore: number = dto.finalAwayScore;
 
     const bets = await this.betModel.find({
       gameId: game._id,
       status: 'pending',
     });
+
+    console.log('[SETTLE] dto:', dto);
 
     const updatedBets: BetDocument[] = [];
 
@@ -105,18 +113,31 @@ export class BetsService {
       const awayMargin = finalAwayScore - finalHomeScore;
 
       let status: Bet['status'] = 'lost';
+      const target = -spread; // spread is from home perspective
+      console.log(
+        '[SETTLE] bet',
+        bet._id?.toString?.() ?? bet._id,
+        'side=',
+        bet.side,
+        'spread=',
+        spread,
+        'homeMargin=',
+        homeMargin,
+        'target=',
+        target,
+      );
       if (bet.side === 'home') {
-        if (homeMargin > spread) {
+        if (homeMargin > target) {
           status = 'won';
-        } else if (homeMargin === spread) {
+        } else if (homeMargin === target) {
           status = 'push';
         } else {
           status = 'lost';
         }
       } else {
-        if (awayMargin > spread) {
+        if (homeMargin < target) {
           status = 'won';
-        } else if (awayMargin === spread) {
+        } else if (homeMargin === target) {
           status = 'push';
         } else {
           status = 'lost';
@@ -131,7 +152,7 @@ export class BetsService {
       await bet.save();
 
       console.log(
-        `Settling bet ${bet._id?.toString?.() ?? bet._id} for user ${bettorUserId}: side=${bet.side} margin=${bet.side === 'home' ? homeMargin : awayMargin} spread=${spread} -> ${status}`,
+        `Settling bet ${bet._id?.toString?.() ?? bet._id} for user ${bettorUserId}: side=${bet.side} homeMargin=${homeMargin} awayMargin=${awayMargin} spread=${spread} -> ${status}`,
       );
 
       if (shouldAward) {

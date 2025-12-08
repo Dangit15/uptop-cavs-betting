@@ -48,7 +48,7 @@ export class BetsController {
   @UseGuards(AdminGuard)
   @Post('settle')
   async settleGame(@Body() body: SettleGameDto) {
-    return this.betsService.settleGame(body.gameId);
+    return this.betsService.settleGame(body);
   }
 }
 

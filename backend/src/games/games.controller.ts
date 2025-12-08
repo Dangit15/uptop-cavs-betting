@@ -1,6 +1,7 @@
-import { Controller, Get, NotFoundException, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Post, UseGuards, ForbiddenException } from '@nestjs/common';
 import { GamesService } from './games.service';
 import { AdminGuard } from '../auth/admin.guard';
+import { isDevSeedEnabled } from '../config/dev-seed.config';
 
 @Controller('games')
 export class GamesController {
@@ -16,6 +17,9 @@ export class GamesController {
   @UseGuards(AdminGuard)
   @Post('dev/seed')
   async seedDevGame() {
+    if (!isDevSeedEnabled()) {
+      throw new ForbiddenException('Dev seeding is disabled in this environment.');
+    }
     return this.gamesService.seedNextGameForDev(); // expected to populate a dev-only next game record for testing
   }
 

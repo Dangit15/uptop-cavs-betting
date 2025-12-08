@@ -51,7 +51,10 @@ export default function HomePage() {
   const [settleError, setSettleError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<"pending" | "success" | "error" | null>(null);
   const isAdmin = session?.user?.email === "admin@example.com";
+  const devSeedEnabled = process.env.NEXT_PUBLIC_DEV_SEED_ENABLED === "true";
   const [userPoints, setUserPoints] = useState<number | null>(null);
+  const [finalHomeScore, setFinalHomeScore] = useState<string>("");
+  const [finalAwayScore, setFinalAwayScore] = useState<string>("");
 
   const formatNextGameError = (err: any) => {
     if (err?.message === "MISSING_ODDS_API_KEY") {
@@ -198,11 +201,24 @@ export default function HomePage() {
 
   const onSettleGame = async () => {
     if (!accessToken || !gameState.data) return;
+    const homeScoreNumber = Number(finalHomeScore);
+    const awayScoreNumber = Number(finalAwayScore);
+    if (!Number.isFinite(homeScoreNumber) || !Number.isFinite(awayScoreNumber)) {
+      setSettleError("Please enter valid final scores.");
+      return;
+    }
     setSettling(true);
     setSettleError(null);
     try {
-      const result = await settleGame(gameState.data.gameId, accessToken);
+      const result = await settleGame(
+        gameState.data.gameId,
+        homeScoreNumber,
+        awayScoreNumber,
+        accessToken,
+      );
       setGameState({ loading: false, data: result.game, error: null });
+      setFinalHomeScore("");
+      setFinalAwayScore("");
       if (accessToken) {
         try {
           const bets = await fetchMyBets(accessToken);
@@ -321,16 +337,14 @@ export default function HomePage() {
                           {gameState.data.spread}
                         </span>
                       </p>
-                      {isAdmin && typeof gameState.data.debugHomeScore === "number" && (
-                        <p className="text-xs text-gray-500">
-                          Home score (debug): {gameState.data.debugHomeScore}
-                        </p>
-                      )}
-                      {isAdmin && typeof gameState.data.debugAwayScore === "number" && (
-                        <p className="text-xs text-gray-500">
-                          Away score (debug): {gameState.data.debugAwayScore}
-                        </p>
-                      )}
+                      {gameState.data.status === "final" &&
+                        typeof (gameState.data as any).finalHomeScore === "number" &&
+                        typeof (gameState.data as any).finalAwayScore === "number" && (
+                          <p className="text-sm text-gray-700">
+                            Final score: Cleveland Cavaliers {(gameState.data as any).finalHomeScore} –{" "}
+                            {gameState.data.awayTeam} {(gameState.data as any).finalAwayScore}
+                          </p>
+                        )}
                     </div>
                     <div className="space-y-2">
                       <p className="text-sm text-gray-600">
@@ -350,7 +364,7 @@ export default function HomePage() {
                 ) : (
                   <div className="space-y-3 text-sm text-gray-600">
                     <p>No active game available.</p>
-                    {isAdmin && status === "authenticated" && accessToken && (
+                    {isAdmin && devSeedEnabled && status === "authenticated" && accessToken && (
                       <button
                         onClick={onSeedDevGame}
                         disabled={seeding}
@@ -446,15 +460,50 @@ export default function HomePage() {
                 )}
 
                 {status === "authenticated" && session?.user?.email === "admin@example.com" && (
-                  <div className="border-t border-gray-100 pt-4 space-y-2">
+                  <div className="border-t border-gray-100 pt-4 space-y-3">
                     {gameState.data && gameState.data.status === "upcoming" && (
-                      <button
-                        onClick={onSettleGame}
-                        disabled={settling}
-                        className="rounded-full border border-gray-300 text-gray-800 px-4 py-2 text-sm font-medium shadow-sm hover:bg-gray-50 transition disabled:opacity-60"
-                      >
-                        {settling ? "Settling…" : "Settle Game"}
-                      </button>
+                      <div className="space-y-2">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <label className="flex-1 text-sm text-gray-700">
+                            <span className="block mb-1 font-medium text-gray-800">
+                              Final Cavs score
+                            </span>
+                            <input
+                              type="number"
+                              value={finalHomeScore}
+                              onChange={(e) => setFinalHomeScore(e.target.value)}
+                              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#ff007a]"
+                              placeholder="e.g. 110"
+                            />
+                          </label>
+                          <label className="flex-1 text-sm text-gray-700">
+                            <span className="block mb-1 font-medium text-gray-800">
+                              Final Opponent score
+                            </span>
+                            <input
+                              type="number"
+                              value={finalAwayScore}
+                              onChange={(e) => setFinalAwayScore(e.target.value)}
+                              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#ff007a]"
+                              placeholder="e.g. 102"
+                            />
+                          </label>
+                        </div>
+                        <button
+                          onClick={onSettleGame}
+                          disabled={
+                            settling ||
+                            !gameState.data ||
+                            finalHomeScore.trim() === "" ||
+                            finalAwayScore.trim() === "" ||
+                            !Number.isFinite(Number(finalHomeScore)) ||
+                            !Number.isFinite(Number(finalAwayScore))
+                          }
+                          className="w-full sm:w-auto rounded-full border border-gray-300 text-gray-800 px-4 py-2 text-sm font-medium shadow-sm hover:bg-gray-50 transition disabled:opacity-60"
+                        >
+                          {settling ? "Settling…" : "Settle Game"}
+                        </button>
+                      </div>
                     )}
                     <button
                       onClick={onResetDemo}

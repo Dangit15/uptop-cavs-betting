@@ -206,3 +206,8 @@ The separation of concerns makes the system easy to extend to new sports, additi
 The structure supports scaling the backend independently of the user interface.  
 The app can run in either live-odds mode or self-contained dev mode without altering architecture.  
 This approach keeps the prototype simple, maintainable, and aligned with how a production betting backend and modern React client would be structured.
+
+## Dev Seeding Flags
+- **Backend:** `DEV_SEED_ENABLED` (default `"true"`). When set to `"false"`, the dev seed endpoint is blocked with a Forbidden response, preventing fake game creation.  
+- **Frontend:** `NEXT_PUBLIC_DEV_SEED_ENABLED` (default `"true"`). When set to `"false"`, the admin “Seed dev game” button is hidden in the UI.  
+These flags let you run a stricter demo without dev seeding while keeping the live-odds flow unchanged.

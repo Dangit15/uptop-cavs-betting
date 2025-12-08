@@ -75,14 +75,19 @@ export async function seedDevGame(accessToken: string) {
   return res.json();
 }
 
-export async function settleGame(gameId: string, accessToken: string) {
+export async function settleGame(
+  gameId: string,
+  finalHomeScore: number,
+  finalAwayScore: number,
+  accessToken: string,
+) {
   const res = await fetch(`${API_BASE_URL}/bets/settle`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ gameId }),
+    body: JSON.stringify({ gameId, finalHomeScore, finalAwayScore }),
   });
 
   if (!res.ok) {
