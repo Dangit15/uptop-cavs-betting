@@ -80,6 +80,49 @@ export async function settleGame(gameId: string, accessToken: string) {
   return res.json();
 }
 
+export async function resetDemoData(accessToken: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/admin/reset`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    let message = "Failed to reset demo data";
+    try {
+      const body = await res.json();
+      if (typeof body?.message === "string") {
+        message = body.message;
+      } else if (Array.isArray(body?.message) && body.message.length > 0) {
+        message = body.message[0];
+      }
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+}
+
+export async function getMyPoints(accessToken: string): Promise<number> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/points/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      return 0;
+    }
+
+    const data = await res.json();
+    return typeof data.totalPoints === "number" ? data.totalPoints : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function createBet(
   accessToken: string,
   bet: CreateBetPayload,
@@ -94,7 +137,18 @@ export async function createBet(
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to create bet: ${res.status}`);
+    let message = `Failed to place bet`;
+    try {
+      const body = await res.json();
+      if (typeof body?.message === "string") {
+        message = body.message;
+      } else if (Array.isArray(body?.message) && body.message.length > 0) {
+        message = body.message[0];
+      }
+    } catch {
+      // ignore parse errors and use default message
+    }
+    throw new Error(message);
   }
 
   return res.json();
@@ -115,7 +169,7 @@ export type Bet = {
   side: BetSide;
   line: number;
   odds: number;
-  status: string;
+  status: "pending" | "won" | "lost" | "push" | "refunded";
   createdAt: string;
 };
 

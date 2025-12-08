@@ -9,6 +9,8 @@ import {
   createBet,
   seedDevGame,
   settleGame,
+  getMyPoints,
+  resetDemoData,
   BetSide,
   NextGame,
   Bet,
@@ -42,11 +44,14 @@ export default function HomePage() {
   const [stake, setStake] = useState<number>(10);
   const [placing, setPlacing] = useState(false);
   const [betMessage, setBetMessage] = useState<string | null>(null);
+  const [betError, setBetError] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
+  const [resetStatus, setResetStatus] = useState<"pending" | "success" | "error" | null>(null);
   const isAdmin = session?.user?.email === "admin@example.com";
+  const [userPoints, setUserPoints] = useState<number | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -67,6 +72,14 @@ export default function HomePage() {
           const bets = await fetchMyBets(accessToken);
           const normalized = Array.isArray(bets) ? bets : [];
           setBetsState({ loading: false, data: normalized, error: null });
+          try {
+            const points = await getMyPoints(accessToken);
+            console.log("Fetched points for user:", points);
+            setUserPoints(points);
+          } catch (err) {
+            console.error("Failed to fetch points", err);
+            setUserPoints(0);
+          }
         } catch (err: any) {
           setBetsState({
             loading: false,
@@ -76,6 +89,7 @@ export default function HomePage() {
         }
       } else {
         setBetsState({ loading: false, data: [], error: null });
+        setUserPoints(0);
       }
     };
 
@@ -92,6 +106,7 @@ export default function HomePage() {
 
     setPlacing(true);
     setBetMessage(null);
+    setBetError(null);
 
     try {
       await createBet(accessToken, {
@@ -108,7 +123,7 @@ export default function HomePage() {
         error: null,
       });
     } catch (err: any) {
-      setBetMessage(err?.message ?? "Failed to place bet.");
+      setBetError(err?.message ?? "Failed to place bet.");
     } finally {
       setPlacing(false);
     }
@@ -131,12 +146,15 @@ export default function HomePage() {
         const bets = await fetchMyBets(accessToken);
         const normalized = Array.isArray(bets) ? bets : [];
         setBetsState({ loading: false, data: normalized, error: null });
+        const points = await getMyPoints(accessToken);
+        setUserPoints(points);
       } catch (err: any) {
         setBetsState({
           loading: false,
           data: [],
           error: err?.message ?? "Failed to load bets",
         });
+        setUserPoints(0);
       }
     }
   };
@@ -168,12 +186,15 @@ export default function HomePage() {
           const bets = await fetchMyBets(accessToken);
           const normalized = Array.isArray(bets) ? bets : [];
           setBetsState({ loading: false, data: normalized, error: null });
+          const points = await getMyPoints(accessToken);
+          setUserPoints(points);
         } catch (err: any) {
           setBetsState({
             loading: false,
             data: [],
             error: err?.message ?? "Failed to load bets",
           });
+          setUserPoints(0);
         }
       }
     } catch (err: any) {
@@ -181,6 +202,23 @@ export default function HomePage() {
       setSettleError(err?.message ?? "Failed to settle game.");
     } finally {
       setSettling(false);
+    }
+  };
+
+  const onResetDemo = async () => {
+    if (!accessToken) return;
+    const confirmed = window.confirm(
+      "This will delete ALL games, bets, and points for this demo. Are you sure?"
+    );
+    if (!confirmed) return;
+    setResetStatus("pending");
+    try {
+      await resetDemoData(accessToken);
+      await refreshGameAndBets();
+      setResetStatus("success");
+    } catch (err: any) {
+      console.error(err);
+      setResetStatus("error");
     }
   };
 
@@ -278,20 +316,41 @@ export default function HomePage() {
                     )}
                   </div>
                 )}
-                {gameState.data &&
-                  gameState.data.status === "upcoming" &&
-                  status === "authenticated" &&
+                {status === "authenticated" &&
                   session?.user?.email === "admin@example.com" && (
                     <div className="mt-3 space-y-2">
+                      {gameState.data &&
+                        gameState.data.status === "upcoming" && (
+                          <button
+                            onClick={onSettleGame}
+                            disabled={settling}
+                            className="rounded-md bg-red-500 hover:bg-red-400 disabled:bg-slate-700 px-4 py-2 text-sm font-medium"
+                          >
+                            {settling ? "Settling…" : "Settle Game"}
+                          </button>
+                        )}
                       <button
-                        onClick={onSettleGame}
-                        disabled={settling}
-                        className="rounded-md bg-red-500 hover:bg-red-400 disabled:bg-slate-700 px-4 py-2 text-sm font-medium"
+                        onClick={onResetDemo}
+                        disabled={resetStatus === "pending"}
+                        className="rounded-md bg-red-600 hover:bg-red-500 disabled:bg-slate-700 px-4 py-2 text-sm font-medium"
                       >
-                        {settling ? "Settling…" : "Settle Game"}
+                        {resetStatus === "pending" ? "Resetting…" : "Reset demo data"}
                       </button>
                       {settleError && (
                         <p className="text-xs text-red-400">{settleError}</p>
+                      )}
+                      {resetStatus === "pending" && (
+                        <p className="text-xs text-slate-300">Resetting demo data...</p>
+                      )}
+                      {resetStatus === "success" && (
+                        <p className="text-xs text-green-400">
+                          Demo data cleared. You can seed a fresh dev game.
+                        </p>
+                      )}
+                      {resetStatus === "error" && (
+                        <p className="text-xs text-red-400">
+                          Failed to reset demo data. Please try again.
+                        </p>
                       )}
                     </div>
                   )}
@@ -371,6 +430,9 @@ export default function HomePage() {
                           {betMessage}
                         </p>
                       )}
+                      {betError && (
+                        <p className="text-xs mt-2 text-red-400">{betError}</p>
+                      )}
                       {!accessToken && (
                         <p className="mt-2 text-xs text-slate-400">
                           You must be logged in to place a bet.
@@ -384,6 +446,9 @@ export default function HomePage() {
               {status === "authenticated" && (
                 <section className="border border-slate-700 rounded-xl p-4">
                   <h3 className="text-lg font-medium mb-2">My Bets</h3>
+                  <p className="text-sm text-slate-300 mb-2">
+                    Total Points: {userPoints ?? 0}
+                  </p>
 
                   {betsState.loading && <p>Loading bets…</p>}
 
@@ -404,7 +469,12 @@ export default function HomePage() {
                                 {bet.gameId.homeTeam} vs {bet.gameId.awayTeam}
                               </p>
                               <p>Side: {bet.side} • Amount: {bet.amount}</p>
-                              <p>Line: {bet.line} • Status: {bet.status}</p>
+                              <p>
+                                Line: {bet.line} • Status:{" "}
+                                {bet.status === "push"
+                                  ? "Push (no points awarded)"
+                                  : bet.status}
+                              </p>
                               <p className="text-slate-400">
                                 Placed: {new Date(bet.createdAt).toLocaleString()}
                               </p>

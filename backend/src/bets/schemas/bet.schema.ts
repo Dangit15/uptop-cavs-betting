@@ -5,7 +5,7 @@ import { Game } from '../../games/schemas/game.schema';
 export type BetDocument = Bet & Document;
 
 export type BetSide = 'home' | 'away';
-export type BetStatus = 'pending' | 'won' | 'lost' | 'refunded';
+export type BetStatus = 'pending' | 'won' | 'lost' | 'push' | 'refunded';
 
 @Schema({ timestamps: true })
 export class Bet {
@@ -30,7 +30,7 @@ export class Bet {
   odds: number;
 
   @Prop({
-    enum: ['pending', 'won', 'lost', 'refunded'],
+    enum: ['pending', 'won', 'lost', 'push', 'refunded'],
     default: 'pending',
   })
   status: BetStatus;

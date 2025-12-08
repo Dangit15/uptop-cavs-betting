@@ -7,8 +7,8 @@ async function bootstrap() {
     origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
     methods: ["GET", "POST", "OPTIONS"],
   });
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3001);
 }
 bootstrap();
 
-// Listens on process.env.PORT if set, otherwise defaults to 3000.
+// Listens on process.env.PORT if set, otherwise defaults to 3001.

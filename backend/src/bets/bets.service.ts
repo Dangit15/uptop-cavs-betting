@@ -9,12 +9,14 @@ import { Model } from 'mongoose';
 import { Bet, BetDocument } from './schemas/bet.schema';
 import { Game, GameDocument } from '../games/schemas/game.schema';
 import { CreateBetDto } from './dto/create-bet.dto';
+import { PointsService } from '../points/points.service';
 
 @Injectable()
 export class BetsService {
   constructor(
     @InjectModel(Bet.name) private readonly betModel: Model<BetDocument>,
     @InjectModel(Game.name) private readonly gameModel: Model<GameDocument>,
+    private readonly pointsService: PointsService,
   ) {}
 
   async create(userId: string, dto: CreateBetDto): Promise<Bet> {
@@ -41,6 +43,14 @@ export class BetsService {
 
     if (game.status !== 'upcoming') {
       throw new BadRequestException('Cannot place a bet on a non-upcoming game');
+    }
+
+    const existing = await this.betModel
+      .findOne({ userId, gameId: game._id })
+      .lean()
+      .exec();
+    if (existing) {
+      throw new BadRequestException('You already have a bet on this game.');
     }
 
     return this.betModel.create({
@@ -78,8 +88,6 @@ export class BetsService {
     const finalHomeScore: number = homeScoreRaw ?? 110;
     const finalAwayScore: number = awayScoreRaw ?? 102;
 
-    const spread = game.spread ?? 0;
-
     const bets = await this.betModel.find({
       gameId: game._id,
       status: 'pending',
@@ -88,14 +96,46 @@ export class BetsService {
     const updatedBets: BetDocument[] = [];
 
     for (const bet of bets) {
-      const won =
-        bet.side === 'home'
-          ? finalHomeScore + spread > finalAwayScore
-          : finalAwayScore - spread > finalHomeScore;
+      const spread = bet.line ?? game.spread ?? 0;
+      const homeMargin = finalHomeScore - finalAwayScore;
+      const awayMargin = finalAwayScore - finalHomeScore;
 
-      bet.status = won ? 'won' : 'lost';
+      let status: Bet['status'] = 'lost';
+      if (bet.side === 'home') {
+        if (homeMargin > spread) {
+          status = 'won';
+        } else if (homeMargin === spread) {
+          status = 'push';
+        } else {
+          status = 'lost';
+        }
+      } else {
+        if (awayMargin > spread) {
+          status = 'won';
+        } else if (awayMargin === spread) {
+          status = 'push';
+        } else {
+          status = 'lost';
+        }
+      }
+
+      const shouldAward = bet.status === 'pending' && status === 'won';
+      const bettorUserId = String(bet.userId);
+
+      bet.status = status;
       bet.settledAt = new Date();
       await bet.save();
+
+      console.log(
+        `Settling bet ${bet._id?.toString?.() ?? bet._id} for user ${bettorUserId}: side=${bet.side} margin=${bet.side === 'home' ? homeMargin : awayMargin} spread=${spread} -> ${status}`,
+      );
+
+      if (shouldAward) {
+        console.log(
+          `Awarding points for bet ${bet._id?.toString?.() ?? bet._id} user ${bettorUserId}: +100 points`,
+        );
+        await this.pointsService.addPoints(bettorUserId, 100);
+      }
       updatedBets.push(bet);
     }
 

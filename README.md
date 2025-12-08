@@ -15,7 +15,8 @@ The core flow: seed a Cavs game, place spread bets, let an admin settle the game
   - Read-only view for logged-out users  
 - User-scoped betting with Cavs vs opponent spread selection.  
 - “My Bets” history tied to the authenticated user.  
-- Admin-only settlement that finalizes a game and updates related bets to won/lost.  
+- Admin-only settlement that finalizes a game and updates related bets to won/lost/push, awarding 100 points per winning bet (no points for push).  
+- Selections are stored as `"home"` or `"away"` (UI labels these as Cavs side / Opponent side).  
 - Clean and consistent loading, empty, logged-out, and finalized-game states.
 
 ---
@@ -56,9 +57,9 @@ Create a `.env` file in **backend/**:
 
 ```env
 PORT=3001
-MONGODB_URI=mongodb://localhost:27017/uptop
+MONGODB_URI=mongodb://localhost:27017/cavs-betting-dev
 JWT_SECRET=dev-secret
-ODDS_API_KEY=your_key_here
+ODDS_API_KEY=your_key_here  # required for live odds; admin dev seeding is available without this
 ```
 
 Create a `.env.local` file in **frontend/**:
@@ -125,12 +126,12 @@ http://localhost:3000
 - Click “Seed dev game”  
 - Optionally place a bet  
 - Click “Settle Game”  
-- Game moves to final and bets become won/lost  
+- Game moves to final and bets become won/lost/push (push returns stake, no points)  
 
 **User Workflow**  
 - Log in as user@example.com  
 - View the upcoming Cavs game  
-- Place a spread bet  
+- Place spread bets (multiple bets per game are allowed in this implementation)  
 - Check status in My Bets  
 - Status updates after admin settlement  
 
@@ -155,6 +156,7 @@ root/
 - GamesModule — dev game seeding + retrieval  
 - BetsModule — create bets, fetch bets, settle bets  
 - AdminGuard — restricts admin actions  
+- PointsModule — stores per-user point totals; settlement awards +100 per winning bet
 
 **Frontend Structure**  
 - NextAuth credential login  
