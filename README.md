@@ -41,14 +41,14 @@ UpTop Cavs Betting is a full-stack prototype for a single-team sportsbook experi
 Backend (`backend/.env`)
 ```
 MONGODB_URI=mongodb://localhost:27017/cavs-betting-dev
-ODDS_API_KEY=REPLACE_ME   # I'll email my personal key if needed
+ODDS_API_KEY=YOUR_ODDS_API_KEY_HERE # I'll send my personal key if needed
 JWT_SECRET=super-secret-jwt-key-change-this
 NODE_ENV=development
+PORT=3001
 DEV_SEED_ENABLED=true
 FOCUS_TEAM_NAME="Cleveland Cavaliers"
-PORT=3001
-ODDS_AUTO_REFRESH_ENABLED=false   # set to true to auto-refresh odds on an interval
-ODDS_REFRESH_MS=900000            # optional interval in ms (defaults to 15 minutes if not set)
+ODDS_AUTO_REFRESH_ENABLED=false
+ODDS_REFRESH_MS=900000
 ```
 Note: You will need an OddsAPI key only if you want odds-based betting to activate. If you don’t have one, ESPN fallback scheduling still works. Dan will email you his temporary key if needed.
 
@@ -58,8 +58,9 @@ frontend/.env.local (required)
 Used by NextAuth and all backend API calls:
 ```
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
-NEXTAUTH_SECRET=replace_me     # any random strong string
+NEXTAUTH_SECRET=some-long-random-string-here
 NEXTAUTH_URL=http://localhost:3000
+NEXT_PUBLIC_DEV_SEED_ENABLED=true
 ```
 
 frontend/.env (optional fallback for build/dev)
@@ -85,6 +86,7 @@ cd backend
 npm install
 npm run start:dev
 ```
+Ensure MongoDB is running locally (e.g., `mongod` against `mongodb://localhost:27017`).
 
 Frontend setup
 ```
@@ -126,7 +128,9 @@ The app auto-selects live OddsAPI data when available, otherwise falls back to E
 
 ### Authentication Overview
 The system uses a simple email/password admin login powered by JWT.  
-Default admin login for local development: `admin@example.com / password` (if seeded accordingly).
+Default logins for local development:  
+- Admin: `admin@example.com / admin`  
+- User: `user@example.com / password`
 
 ### Disclaimer
 This project is a coding challenge prototype. Environment variables should not be committed. For Ross/Alex: Dan will email the OddsAPI key needed for live odds testing.
