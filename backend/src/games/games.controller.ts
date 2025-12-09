@@ -2,15 +2,19 @@
 // - Next Cavs game is surfaced via GET /games/next which returns the soonest upcoming Mongo record (populated by the Odds API flow in POST /games/next).
 // - POST /games/next triggers a live Odds API fetch/upsert; no seeded data unless dev seeding is explicitly called.
 // - Seed endpoint: POST /games/dev/seed (guarded + toggleable via isDevSeedEnabled) calls GamesService.seedNextGameForDev to upsert the next Cavs game using live Odds API data.
-import { Controller, Get, NotFoundException, Post, UseGuards, ForbiddenException, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Post, UseGuards, ForbiddenException, BadRequestException, HttpCode, HttpStatus, Body, Param } from '@nestjs/common';
 import { GamesService } from './games.service';
 import { AdminGuard } from '../auth/admin.guard';
 import { isDevSeedEnabled } from '../config/dev-seed.config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { BetsService } from '../bets/bets.service';
 
 @Controller('games')
 export class GamesController {
-  constructor(private readonly gamesService: GamesService) {}
+  constructor(
+    private readonly gamesService: GamesService,
+    private readonly betsService: BetsService,
+  ) {}
 
   // Hit this to pull from Odds API and upsert into Mongo
   @UseGuards(AdminGuard)
@@ -54,6 +58,29 @@ export class GamesController {
       throw new NotFoundException({ message: 'No upcoming game found' });
     }
     return game;
+  }
+
+  @Get('next-schedule')
+  async getNextScheduleOnly() {
+    const game = await this.gamesService.getNextScheduleOnly();
+    if (!game) {
+      throw new NotFoundException({ message: 'No upcoming game found' });
+    }
+    return game;
+  }
+
+  // Alias for spec compatibility: admin settlement via games/:gameId/settle (forwards to bets settlement)
+  @UseGuards(AdminGuard)
+  @Post(':gameId/settle')
+  async settleGameAlias(
+    @Param('gameId') gameId: string,
+    @Body() body: { finalHomeScore: number; finalAwayScore: number },
+  ) {
+    return this.betsService.settleGame({
+      gameId,
+      finalHomeScore: body.finalHomeScore,
+      finalAwayScore: body.finalAwayScore,
+    });
   }
 }
 

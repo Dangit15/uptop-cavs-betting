@@ -50,7 +50,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const id = user.id ?? (user as any)._id?.toString();
+    const id = String(user.id ?? (user as any)._id?.toString());
     const payload = { sub: id, userId: id, email: user.email };
 
     console.log('DEBUG AuthService.login payload =', payload);

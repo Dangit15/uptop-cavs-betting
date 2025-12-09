@@ -8,12 +8,14 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { firstValueFrom } from 'rxjs';
 import { Game, GameDocument } from './schemas/game.schema';
+import { staticCavsSchedule } from './static-schedule';
 
 interface NextCavsGameFromApi {
   externalGameId: string;
@@ -31,6 +33,9 @@ export class GamesService {
   private readonly cavsTeamName = 'cavaliers';
   private readonly focusTeamName: string =
     process.env.FOCUS_TEAM_NAME || 'Cleveland Cavaliers';
+  private readonly espnScheduleUrl =
+    'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/cle/schedule';
+  private readonly logger = new Logger(GamesService.name);
 
   constructor(
     private readonly httpService: HttpService,
@@ -282,6 +287,153 @@ export class GamesService {
       .sort({ startTime: 1 })
       .lean()
       .exec();
+  }
+
+  // PUBLIC: schedule-only view that now uses ESPN feed (with static fallback)
+  async getNextScheduleOnly(): Promise<{
+    homeTeam: string;
+    awayTeam: string;
+    startTime: string;
+    status: string;
+  } | null> {
+    try {
+      const espnGame = await this.getNextScheduledGameFromESPN();
+      if (espnGame) {
+        return espnGame; // ESPN returned a real Cavs matchup
+      }
+      this.logger.log(
+        'ESPN schedule responded but had no Cavs game; returning null',
+      );
+      return null;
+    } catch (error: any) {
+      this.logger.error('Error fetching Cavs schedule from ESPN', {
+        url: this.espnScheduleUrl,
+        error: error?.message ?? error,
+      });
+      const fallback = this.pickFallbackSchedule();
+      if (fallback) {
+        this.logger.log(
+          'Using static Cavs schedule fallback (ESPN error)',
+          fallback,
+        );
+        return fallback;
+      }
+      return null;
+    }
+  }
+
+  private pickFallbackSchedule(): {
+    homeTeam: string;
+    awayTeam: string;
+    startTime: string;
+    status: 'upcoming';
+  } | null {
+    const nowTs = Date.now();
+    const fallback = staticCavsSchedule
+      .map((g) => ({
+        homeTeam: g.homeTeam,
+        awayTeam: g.awayTeam,
+        startTime: g.startTimeISO,
+        status: 'upcoming' as const,
+        startTs: new Date(g.startTimeISO).getTime(),
+      }))
+      .filter((g) => !Number.isNaN(g.startTs) && g.startTs > nowTs)
+      .sort((a, b) => a.startTs - b.startTs);
+
+    if (fallback.length === 0) {
+      return null;
+    }
+
+    const nextFallback = fallback[0];
+    console.log('Using static Cavs schedule fallback (ESPN)', nextFallback);
+    return {
+      homeTeam: nextFallback.homeTeam,
+      awayTeam: nextFallback.awayTeam,
+      startTime: nextFallback.startTime,
+      status: 'upcoming',
+    };
+  }
+
+  // NEW: ESPN-powered schedule lookup with static fallback
+  async getNextScheduledGameFromESPN(): Promise<{
+    homeTeam: string;
+    awayTeam: string;
+    startTime: string;
+    status: 'upcoming';
+  } | null> {
+    const response$ = this.httpService.get(this.espnScheduleUrl);
+    const response = await firstValueFrom(response$);
+    const data = response.data;
+    const events = Array.isArray(data?.events) ? data.events : [];
+    const now = new Date();
+
+    const normalized = events
+      .map((event: any) => {
+        const eventDate = event?.date ? new Date(event.date) : null;
+        if (!eventDate || Number.isNaN(eventDate.getTime())) {
+          return null;
+        }
+        if (eventDate.getTime() < now.getTime()) {
+          return null;
+        }
+
+        const competition = event?.competitions?.[0];
+        const competitors = competition?.competitors ?? [];
+        const homeComp =
+          competitors.find((c: any) => c?.homeAway === 'home') ??
+          competitors[0];
+        const awayComp =
+          competitors.find((c: any) => c?.homeAway === 'away') ??
+          competitors[1];
+
+        if (!homeComp || !awayComp) {
+          return null;
+        }
+
+        const homeTeam =
+          homeComp.team?.displayName ??
+          homeComp.team?.name ??
+          'Unknown Home';
+        const awayTeam =
+          awayComp.team?.displayName ??
+          awayComp.team?.name ??
+          'Unknown Away';
+
+        const startTime = eventDate.toISOString();
+
+        return {
+          homeTeam,
+          awayTeam,
+          startTime,
+          status: 'upcoming' as const,
+        };
+      })
+      .filter(Boolean) as Array<{
+        homeTeam: string;
+        awayTeam: string;
+        startTime: string;
+        status: 'upcoming';
+      }>;
+
+    if (normalized.length === 0) {
+      this.logger.log(
+        `ESPN schedule: no future Cavs games found (events=${events.length})`,
+      );
+      return null;
+    }
+
+    normalized.sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+    );
+
+    const next = normalized[0];
+
+    this.logger.log(
+      `ESPN schedule: next Cavs game = ${next.homeTeam} vs ${next.awayTeam} at ${next.startTime}`,
+    );
+
+    return next;
   }
 
   // PUBLIC: dev helper to seed an upcoming game using live Odds API data

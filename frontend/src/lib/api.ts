@@ -1,4 +1,12 @@
-const API_BASE_URL = "http://localhost:3001";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
+
+export type NextScheduleGame = {
+  homeTeam: string;
+  awayTeam: string;
+  startTime: string;
+  status: string;
+};
 
 export type NextGame = {
   gameId: string;
@@ -15,8 +23,7 @@ export type NextGame = {
 export async function fetchNextGame(
   accessToken?: string
 ): Promise<NextGame | null> {
-  // Hard-coded URL, no variables, no template string
-  const url = "http://localhost:3001/games/next";
+  const url = `${API_BASE_URL}/games/next`;
 
   const res = await fetch(url, {
     cache: "no-store",
@@ -44,6 +51,38 @@ export async function fetchNextGame(
     }
     if (message.includes("Missing ODDS_API_KEY")) {
       throw new Error("MISSING_ODDS_API_KEY");
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function getNextCavsSchedule(): Promise<NextScheduleGame | null> {
+  const url = `${API_BASE_URL}/games/next-schedule`;
+
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (res.status === 404) {
+    return null;
+  }
+
+  if (!res.ok) {
+    let message = `Failed to fetch next Cavs schedule`;
+    try {
+      const body = await res.json();
+      if (typeof body?.message === "string") {
+        message = body.message;
+      } else if (Array.isArray(body?.message) && body.message.length > 0) {
+        message = body.message[0];
+      }
+    } catch {
+      // ignore parse errors
     }
     throw new Error(message);
   }

@@ -1,36 +1,13 @@
-import { Body, Controller, Get, Post, Headers, UseGuards, Req } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Body, Controller, Get, Post, UseGuards, Req } from '@nestjs/common';
 import { BetsService } from './bets.service';
 import { CreateBetDto } from './dto/create-bet.dto';
 import { SettleGameDto } from './dto/settle-game.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 
-@UseGuards(JwtAuthGuard)
 @Controller('bets')
 export class BetsController {
-  constructor(
-    private readonly betsService: BetsService,
-    private readonly jwtService: JwtService,
-  ) {}
-
-  private getUserIdFromAuthHeader(authHeader?: string): string {
-    let userId = 'demo-user-1';
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
-      try {
-        const payload = this.jwtService.verify(token, {
-          secret: process.env.JWT_SECRET || 'dev-secret',
-        });
-        if (payload && typeof payload.sub === 'string') {
-          userId = payload.sub;
-        }
-      } catch (e) {
-        // fallback to demo-user-1 on invalid token
-      }
-    }
-    return userId;
-  }
+  constructor(private readonly betsService: BetsService) {}
 
   @UseGuards(JwtAuthGuard)
   @Post()
@@ -39,8 +16,18 @@ export class BetsController {
     return this.betsService.create(userId, dto);
   }
 
+  // Protected: requires Authorization: Bearer <token> when testing via Postman
+  @UseGuards(JwtAuthGuard)
   @Get('me')
   async findMyBets(@Req() req: any) {
+    const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
+    return this.betsService.getBetsForUser(userId);
+  }
+
+  // Alias: GET /bets returns same as /bets/me
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  async findMyBetsAlias(@Req() req: any) {
     const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
     return this.betsService.getBetsForUser(userId);
   }
@@ -52,4 +39,4 @@ export class BetsController {
   }
 }
 
-// Controller: POST /bets and GET /bets derive userId from JWT (falling back to demo-user-1), POST /bets/settle delegates to service.
+// Controller: POST /bets and GET /bets/me require JWT auth, POST /bets/settle is admin-only.

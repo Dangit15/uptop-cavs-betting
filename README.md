@@ -3,6 +3,17 @@
 ## Project overview
 UpTop Cavs Betting is a full-stack prototype for a single-team sportsbook experience focused on the Cleveland Cavaliers. It uses a NestJS backend, a Next.js 14 App Router frontend, MongoDB for persistence, and integrates with The Odds API for live lines. The goal is to demonstrate ingesting and settling a single upcoming game with simple spread betting.
 
+## Minimum Required Environment Variables
+
+| Location              | Variable                   | Purpose                      |
+| --------------------- | -------------------------- | ---------------------------- |
+| backend/.env          | MONGODB_URI                | Local MongoDB connection     |
+| backend/.env          | ODDS_API_KEY               | Required for odds-based betting |
+| backend/.env          | JWT_SECRET                 | Auth signing key             |
+| frontend/.env.local   | NEXTAUTH_SECRET            | Required for login           |
+| frontend/.env.local   | NEXT_PUBLIC_BACKEND_URL    | Connect frontend to backend  |
+| frontend/.env.local   | NEXTAUTH_URL               | Required for NextAuth callback URLs |
+
 ## High-level architecture
 - Backend: NestJS modules for Games, Bets, Auth; MongoDB via Mongoose; DTO validation; JWT auth with admin vs regular roles.
 - Frontend: Next.js 14 App Router with server + client components; lightweight Rain-style theme; API helpers for backend calls.
@@ -11,6 +22,7 @@ UpTop Cavs Betting is a full-stack prototype for a single-team sportsbook experi
 ## Features
 - User login/logout with JWT-backed sessions; admin vs regular user roles.
 - Admin-only “next game” seeding from live Odds API data.
+- Admin odds ingestion trigger: `POST /games/next` (admin-only) fetches the next Cavs game with odds from The Odds API and upserts it before betting.
 - Dev-only fake demo seeding (Cavs vs random realistic opponent) when no live market exists.
 - Bet placement on Cavs side vs opponent side.
 - Spread-based settlement with correct grading using final scores and spread.
@@ -23,41 +35,116 @@ UpTop Cavs Betting is a full-stack prototype for a single-team sportsbook experi
 - Fallback: if no upcoming Cavs game with odds is available, `POST /games/dev/seed` returns `404` with `{ message: 'No upcoming Cavs game found from Odds API' }`; the frontend surfaces this neutrally and keeps the “No active game available” state.
 - Fake demo seed: separate dev-only endpoint seeds a Cavs home game vs a random opponent (Bulls, Wizards, Hornets, Knicks, Heat, Celtics) at a realistic tipoff in the next few days with `bookmakerKey: demo`—for demos when no live market exists.
 
-## Environment variables
-Backend (`backend/.env`):
-- `MONGODB_URI` – MongoDB connection string.
-- `ODDS_API_KEY` – The Odds API key for live odds ingestion.
-- `JWT_SECRET` – Secret for signing JWTs.
-- `NODE_ENV` – Node environment flag.
-- `PORT` – Backend HTTP port (default 3001).
-- `DEV_SEED_ENABLED` – Enables dev seed endpoints (live seed and fake demo seed) when `true`.
-- `FOCUS_TEAM_NAME` – Team to target for odds (defaults to `Cleveland Cavaliers`; e.g., set to `Indiana Pacers` to test another team).
+## Local Development Setup
 
-Frontend (`frontend/.env.local` or similar):
-- `NEXT_PUBLIC_API_BASE_URL` – Base URL for the backend API (e.g., `http://localhost:3001`).
-- `NEXT_PUBLIC_DEV_SEED_ENABLED` – Toggles visibility of admin seed controls when `true`.
+### Environment Variables
+Backend (`backend/.env`)
+```
+MONGODB_URI=mongodb://localhost:27017/cavs-betting-dev
+ODDS_API_KEY=REPLACE_ME   # I'll email my personal key if needed
+JWT_SECRET=super-secret-jwt-key-change-this
+NODE_ENV=development
+DEV_SEED_ENABLED=true
+FOCUS_TEAM_NAME="Cleveland Cavaliers"
+PORT=3001
+ODDS_AUTO_REFRESH_ENABLED=false   # set to true to auto-refresh odds on an interval
+ODDS_REFRESH_MS=900000            # optional interval in ms (defaults to 15 minutes if not set)
+```
+Note: You will need an OddsAPI key only if you want odds-based betting to activate. If you don’t have one, ESPN fallback scheduling still works. Dan will email you his temporary key if needed.
 
-## Running the project locally
-1) Clone the repo.  
-2) Install dependencies in `backend/` and `frontend/` (`npm install`).  
-3) Create `.env` files for backend and frontend using the variables above.  
-4) Start MongoDB locally.  
-5) Run the backend: `cd backend && npm run start:dev`.  
-6) Run the frontend: `cd frontend && npm run dev`.  
-7) Useful scripts: backend `npm run start:dev`; frontend `npm run dev` (add tests/scripts as needed).
+Frontend Environment Variables
+
+frontend/.env.local (required)  
+Used by NextAuth and all backend API calls:
+```
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+NEXTAUTH_SECRET=replace_me     # any random strong string
+NEXTAUTH_URL=http://localhost:3000
+```
+
+frontend/.env (optional fallback for build/dev)
+```
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+```
+
+Both `.env.local` and `.env` may be required depending on how your environment boots.  
+`.env.local` is mandatory for NextAuth — without these values, login will not work.  
+Frontend API calls read `NEXT_PUBLIC_BACKEND_URL`; set it to your backend origin and restart `npm run dev` after changes.  
+Dan will email the OddsAPI key separately. Do not commit any `.env` files to source control.
+
+### Installation & Startup
+Clone & install
+```
+git clone <repo-url>
+cd uptop-cavs-betting
+```
+
+Backend setup
+```
+cd backend
+npm install
+npm run start:dev
+```
+
+Frontend setup
+```
+# in another terminal
+cd frontend
+npm install
+npm run dev
+```
+
+App runs at:
+- Frontend: http://localhost:3000
+- Backend: http://localhost:3001
+
+### Testing Notes
+- E2E tests use `mongodb-memory-server`; if your environment blocks binding, set `E2E_USE_MEMORY_MONGO=false` to skip that suite.
+- Watchman can be disabled by ensuring `watchman: false` in Jest config (already set) or exporting `JEST_USE_WATCHMAN=0` when running tests.
+
+### Seeding / Dev Tools
+- Reset demo data  
+  `POST /admin/reset`  
+  Clears all bets, points, and games.
+- Admin odds ingestion  
+  `POST /games/next` (admin-only)  
+  Fetches the next Cavs game with odds from The Odds API and upserts it so betting is enabled on that matchup.
+- Seed fake Cavs game  
+  `POST /games/dev/seed-fake`  
+  Adds a fake Cavaliers matchup with odds so betting can be demonstrated even when no live odds are available.
+- Admin settlement (alias)  
+  `POST /bets/settle` (admin-only)  
+  `POST /games/:gameId/settle` (admin-only)  
+  Alias to the existing settlement logic used by `POST /bets/settle`; accepts `{ finalHomeScore, finalAwayScore }` and returns the same response.
+
+The app auto-selects live OddsAPI data when available, otherwise falls back to ESPN scheduling. The fake-game endpoint lets you instantly show the spread/betting workflow.
+
+### Logic Summary (Quick Overview)
+- `/games/next` → returns the next Cavs game only if OddsAPI has odds (populated via admin `POST /games/next`). Enables betting UI.
+- `/games/next-schedule` → ESPN fallback when no odds exist.  
+  The frontend automatically picks odds first, fallback second; no manual toggle required.
+
+### Authentication Overview
+The system uses a simple email/password admin login powered by JWT.  
+Default admin login for local development: `admin@example.com / password` (if seeded accordingly).
+
+### Disclaimer
+This project is a coding challenge prototype. Environment variables should not be committed. For Ross/Alex: Dan will email the OddsAPI key needed for live odds testing.
 
 ## Workflows and how to use the app
 - As admin:
   - Log in.
+  - Call `POST /games/next` to ingest the next Cavs game with odds from The Odds API (required before betting on a new matchup).
   - Use “Seed dev game” to pull the next Cavs game from The Odds API (when odds exist).
   - Use “Seed demo game (fake data)” to create a Cavs vs random opponent demo matchup when no live market exists.
-  - Enter final scores and settle the game.
+  - Enter final scores and settle the game via `POST /bets/settle` (or alias `POST /games/:gameId/settle`).
   - Optionally reset demo data to clear games/bets.
 - As a regular user:
   - Log in.
   - View the next game card.
   - Place a bet on Cavs or opponent side.
   - After admin settlement, view bet result and points total.
+  - Fetch bet history via `GET /bets` (or legacy `GET /bets/me`).
 
 ## Implementation notes / design decisions
 - Live Odds API seeding and fake demo seeding are separated and flag-guarded to avoid polluting data and to allow demos when markets are unavailable.
